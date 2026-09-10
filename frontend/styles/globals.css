@@ -1,0 +1,26 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  background-color: #EEF1E6;
+  color: #1E2A1F;
+  font-family: 'IBM Plex Sans', sans-serif;
+}
+
+h1, h2, h3, .font-display {
+  font-family: 'Fraunces', serif;
+}
+
+.hairline {
+  border: 1px solid #D8DED0;
+}
+
+.pill {
+  border: 1px solid #D8DED0;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+}
