@@ -11,7 +11,7 @@ const demoRoutes = require('./routes/demo')
 
 const app = express()
 
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:3000' }))
+app.use(cors({ origin: process.env.FRONTEND_ORIGIN}))
 app.use(express.json())
 
 app.get('/health', (req, res) => {
