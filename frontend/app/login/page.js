@@ -62,13 +62,6 @@ export default function LoginPage() {
           {submitting ? 'Memproses...' : 'Masuk'}
         </button>
       </form>
-
-      <div className="mt-8 text-sm text-primarylight">
-        <p className="mb-1">Akun demo saat mode demo aktif</p>
-        <p>superadmin@demo.local / demo123</p>
-        <p>admin@demo.local / demo123</p>
-        <p>dapur@demo.local / demo123</p>
-      </div>
     </main>
   )
 }
