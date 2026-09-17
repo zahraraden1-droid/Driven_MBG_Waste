@@ -8,7 +8,7 @@ const router = express.Router()
 
 const demoUsers = [
   { id: 'demo-super-1', nama: 'Super Admin Demo', email: 'superadmin@demo.local', password: 'demo123', role: 'superadmin' },
-  { id: 'demo-admin-1', nama: 'Admin SDN 01 Cempaka', email: 'admin@demo.local', password: 'demo123', role: 'admin_sekolah', sekolahId: 'demo-sekolah-1' },
+  { id: 'demo-admin-1', nama: 'Admin SPPG', email: 'admin@demo.local', password: 'demo123', role: 'admin_sekolah' },
   { id: 'demo-dapur-1', nama: 'Dapur MBG Wilayah 1', email: 'dapur@demo.local', password: 'demo123', role: 'dapur_mbg' }
 ]
 
@@ -25,7 +25,7 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Email atau password salah' })
     }
     const token = jwt.sign(
-      { id: found.id, role: found.role, nama: found.nama, sekolahId: found.sekolahId || null },
+      { id: found.id, role: found.role, nama: found.nama },
       process.env.JWT_SECRET,
       { expiresIn: '8h' }
     )
@@ -52,7 +52,7 @@ router.post('/login', async (req, res) => {
   }
 
   const token = jwt.sign(
-    { id: user.id, role: user.role, nama: user.nama, sekolahId: user.sekolah_id || null },
+    { id: user.id, role: user.role, nama: user.nama },
     process.env.JWT_SECRET,
     { expiresIn: '8h' }
   )

@@ -4,7 +4,7 @@ import { useState } from 'react'
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api'
 
-export default function ReportDownload({ schools }) {
+export default function ReportDownload() {
   const [note, setNote] = useState('')
 
   async function downloadCsv() {
@@ -30,11 +30,6 @@ export default function ReportDownload({ schools }) {
 
       <div>
         <p className="text-sm mb-2 text-primarylight">Koordinasi langsung ke pihak sekolah</p>
-        <select className="hairline rounded-sm p-2 mb-3 w-full">
-          {schools.map((s) => (
-            <option key={s.id} value={s.id}>{s.nama} · {s.kontak}</option>
-          ))}
-        </select>
         <textarea
           value={note}
           onChange={(e) => setNote(e.target.value)}

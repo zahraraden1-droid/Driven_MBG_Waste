@@ -8,6 +8,9 @@ const adminSekolahRoutes = require('./routes/adminSekolah')
 const dapurMbgRoutes = require('./routes/dapurMbg')
 const reportsRoutes = require('./routes/reports')
 const demoRoutes = require('./routes/demo')
+const iotRoutes = require('./routes/iot')
+const maggotBatchesRoutes = require('./routes/maggotBatches')
+const { startMqtt } = require('./config/mqtt')
 
 const app = express()
 
@@ -21,9 +24,11 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes)
 app.use('/api/public', publicRoutes)
 app.use('/api/admin-sekolah', adminSekolahRoutes)
+app.use('/api/admin-sekolah/batches', maggotBatchesRoutes)
 app.use('/api/dapur-mbg', dapurMbgRoutes)
 app.use('/api/reports', reportsRoutes)
 app.use('/api/demo', demoRoutes)
+app.use('/api/iot', iotRoutes)
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint tidak ditemukan' })
@@ -33,3 +38,5 @@ const port = process.env.PORT || 4000
 app.listen(port, () => {
   console.log(`Server SPPG MBG berjalan di port ${port}`)
 })
+
+startMqtt()

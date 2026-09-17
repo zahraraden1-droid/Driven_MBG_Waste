@@ -6,6 +6,7 @@ const requireRole = require('../middleware/roleCheck')
 const { isDemoActive } = require('../config/demoMode')
 const demoData = require('../data/demoData')
 const aiService = require('../services/aiService')
+const evaluateChamberConditions = require('../services/sensorEvaluationService')
 
 const router = express.Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
@@ -20,13 +21,32 @@ router.get('/monitoring', async (req, res) => {
   const { data, error } = await supabase
     .from('sensor_readings')
     .select('*')
-    .eq('sekolah_id', req.user.sekolahId)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
 
   if (error) return res.status(500).json({ error: error.message })
-  res.json(data)
+
+  if (!data) return res.json(null)
+
+  const evaluasi = evaluateChamberConditions({
+    suhuBilikC: data.suhu_bilik_c,
+    kelembabanPersen: data.kelembaban_persen,
+    kadarAmoniaPpm: data.kadar_amonia_ppm,
+    suhuSubstratC: data.suhu_substrat_c
+  })
+
+  res.json({
+    id: data.id,
+    suhuBilikC: data.suhu_bilik_c,
+    kelembabanPersen: data.kelembaban_persen,
+    kadarAmoniaPpm: data.kadar_amonia_ppm,
+    suhuSubstratC: data.suhu_substrat_c,
+    estimasiBeratMaggotKg: data.estimasi_berat_maggot_kg,
+    aman: evaluasi.aman,
+    rekomendasi: evaluasi.rekomendasi,
+    updatedAt: data.created_at
+  })
 })
 
 router.get('/menu', async (req, res) => {
@@ -37,7 +57,6 @@ router.get('/menu', async (req, res) => {
   const { data, error } = await supabase
     .from('menu_uploads')
     .select('*')
-    .eq('sekolah_id', req.user.sekolahId)
     .order('tanggal', { ascending: false })
 
   if (error) return res.status(500).json({ error: error.message })
@@ -65,7 +84,7 @@ router.post('/menu', upload.single('foto'), async (req, res) => {
   let fotoUrl = null
 
   if (req.file) {
-    const fileName = `${req.user.sekolahId}/${Date.now()}-${req.file.originalname}`
+    const fileName = `${Date.now()}-${req.file.originalname}`
     const { error: uploadError } = await supabase.storage
       .from('menu-foto')
       .upload(fileName, req.file.buffer, { contentType: req.file.mimetype })
@@ -79,7 +98,6 @@ router.post('/menu', upload.single('foto'), async (req, res) => {
   const { data, error } = await supabase
     .from('menu_uploads')
     .insert({
-      sekolah_id: req.user.sekolahId,
       tanggal,
       nama,
       kalori: Number(kalori) || 0,
@@ -95,7 +113,7 @@ router.post('/menu', upload.single('foto'), async (req, res) => {
 
 router.get('/prediksi', async (req, res) => {
   const riwayat = isDemoActive() ? demoData.efficiencyTrend : []
-  const hasil = await aiService.getWastePrediction(req.user.sekolahId, riwayat)
+  const hasil = await aiService.getWastePrediction(riwayat)
   res.json(hasil)
 })
 
@@ -107,7 +125,6 @@ router.get('/penjualan', async (req, res) => {
   const { data, error } = await supabase
     .from('sales_records')
     .select('*')
-    .eq('sekolah_id', req.user.sekolahId)
     .order('tanggal', { ascending: false })
 
   if (error) return res.status(500).json({ error: error.message })
@@ -130,7 +147,6 @@ router.post('/penjualan', async (req, res) => {
   const { data, error } = await supabase
     .from('sales_records')
     .insert({
-      sekolah_id: req.user.sekolahId,
       tanggal,
       jenis,
       berat_kg: beratKg,

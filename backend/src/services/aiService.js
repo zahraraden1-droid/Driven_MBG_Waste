@@ -17,25 +17,25 @@ async function callLocalAi(path, payload) {
   return response.json()
 }
 
-async function getWastePrediction(sekolahId, riwayat) {
+async function getWastePrediction(riwayat) {
   if (isDemoActive()) {
     return demoData.aiPrediction
   }
 
   try {
-    return await callLocalAi('/predict/waste', { sekolahId, riwayat })
+    return await callLocalAi('/predict/waste', { riwayat })
   } catch (err) {
     return { error: true, message: err.message }
   }
 }
 
-async function getMenuCorrelation(sekolahId) {
+async function getMenuCorrelation() {
   if (isDemoActive()) {
     return demoData.aiCorrelationTable
   }
 
   try {
-    return await callLocalAi('/analyze/menu-correlation', { sekolahId })
+    return await callLocalAi('/analyze/menu-correlation', {})
   } catch (err) {
     return { error: true, message: err.message }
   }

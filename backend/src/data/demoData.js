@@ -30,9 +30,17 @@ const sensorReadings = {
   suhuBilikC: 29.4,
   kelembabanPersen: 68,
   kadarAmoniaPpm: 12,
+  suhuSubstratC: 33.2,
   estimasiBeratMaggotKg: 145.6,
+  aman: true,
+  rekomendasi: null,
   updatedAt: new Date().toISOString()
 }
+
+const maggotBatches = [
+  { id: 'demo-batch-1', batchKode: 'MBG-001', tanggalMulai: '2026-09-01', beratTelurGram: 250, biayaBeli: 150000, status: 'inkubasi', catatan: 'Telur dari hatchery mitra' },
+  { id: 'demo-batch-2', batchKode: 'MBG-002', tanggalMulai: '2026-08-20', beratTelurGram: 200, biayaBeli: 120000, status: 'aktif_makan', catatan: null }
+]
 
 const menuUploads = [
   { id: 'demo-menu-1', tanggal: '2026-09-05', nama: 'Nasi, ayam bakar, tumis kangkung', kalori: 620, protein: 28, fotoUrl: null },
@@ -63,20 +71,15 @@ const efficiencyTrend = [
   { minggu: 'Minggu 4', totalLimbahKg: 470 }
 ]
 
-const schools = [
-  { id: 'demo-sekolah-1', nama: 'SDN 01 Cempaka', kontak: '0812xxxxxx1' },
-  { id: 'demo-sekolah-2', nama: 'SMPN 04 Melati', kontak: '0812xxxxxx2' }
-]
-
 module.exports = {
   publicKpi,
   wasteByCategory,
   educationCards,
   sensorReadings,
+  maggotBatches,
   menuUploads,
   aiPrediction,
   salesRecords,
   aiCorrelationTable,
-  efficiencyTrend,
-  schools
+  efficiencyTrend
 }
