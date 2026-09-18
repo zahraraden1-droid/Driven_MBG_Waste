@@ -111,6 +111,20 @@ File: `firmware/maggot_chamber_esp8266/maggot_chamber_esp8266.ino`
 | `BATCH_ID` | - | UUID batch aktif dari `maggot_batches` (boleh kosong) |
 | `CALIBRATION_FACTOR` | Disesuaikan timbangan | Disesuaikan timbangan |
 
+## 3.1 Sketch Test (fase rakit & kalibrasi)
+
+Terpisah dari firmware produksi, ada sketch **test** di folder `*_test` untuk verifikasi seluruh fungsi:
+
+- `firmware/smart_container_esp32cam_test/smart_container_esp32cam_test.ino`
+  - Kalibrasi HX711 (perintah `S <gram>`, tersimpan di NVS/Preferences tahan reboot)
+  - Tes kamera (`C`), scan I2C (`B`), WiFi/MQTT (`M`), publish foto → backend → Roboflow & terima result (`P` / `Y`)
+- `firmware/maggot_chamber_esp8266_test/maggot_chamber_esp8266_test.ino`
+  - Dump semua sensor (`R`), kalibrasi HX711 (`S <gram>` & tersimpan EEPROM), kalibrasi gas baharu MQ135 (`G`, R0 = Rs/9.8), set R0 manual (`A`), scan I2C (`B`), kirim telemetry + terima result backend (`V`)
+
+Faktor kalibrasi yang tersimpan di NVS/EEPROM oleh sketch test **auto-dipakai firmware produksi** saat boot (ESP32-CAM: `muatKalibrasi()`; ESP8266 test menyimpan ke EEPROM, sedangkan firmware produksi ESP8266 masih memakai `CALIBRATION_FACTOR` — jika ingin sinkron, salin nilai hasil kalibrasi ke konstanta produksi).
+
+> Alur umum: flash sketch test → kalibrasi (lihat serial) → catat/simpan faktor → flash firmware produksi. Faktor ESP32-CAM otomatis terbaca dari NVS; untuk ESP8266 salin ke `CALIBRATION_FACTOR`.
+
 ## 4. Transport MQTT (pengganti HTTP REST)
 
 Perangkat sudah memakai **MQTT** (bukan lagi HTTP POST). Kedua firmware memakai library `PubSubClient` dan

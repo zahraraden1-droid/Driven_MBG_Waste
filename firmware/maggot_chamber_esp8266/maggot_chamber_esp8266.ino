@@ -4,6 +4,7 @@
 #include <OneWire.h>
 #include <DallasTemperature.h>
 #include <HX711.h>
+#include <EEPROM.h>
 
 #define DHT_PIN 4
 #define DHT_TYPE DHT22
@@ -15,15 +16,15 @@
 #define MQ135_R0 30.0
 #define SEND_INTERVAL_MS 30000
 
-const char* WIFI_SSID = "R-401";
-const char* WIFI_PASS = "*ruang401";
+const char* WIFI_SSID = "R-408";
+const char* WIFI_PASS = "*ruang408";
 // PRODUCTION: broker MQTT di Railway via TCP proxy tambahan (bukan domain HTTP).
 const char* MQTT_SERVER = "tramway.proxy.rlwy.net";
 const uint16_t MQTT_PORT = 55251;
 const char* MQTT_USER = "mbg_device";
 const char* MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
 const char* MQTT_PREFIX = "mbg";
-const char* BATCH_ID = "001";
+const char* BATCH_ID = "";
 
 DHT dht(DHT_PIN, DHT_TYPE);
 OneWire oneWire(DS18B20_PIN);
@@ -133,7 +134,17 @@ void setup() {
   ds18b20.begin();
   Serial.printf("[dbg] sensor temp count: %d\n", ds18b20.getDeviceCount());
   scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
-  scale.set_scale(CALIBRATION_FACTOR);
+
+  EEPROM.begin(16);
+  float savedFactor = 0;
+  EEPROM.get(0, savedFactor);
+  EEPROM.end();
+  if (savedFactor > 0) {
+    scale.set_scale(savedFactor);
+    Serial.printf("[dbg] pakai scale factor tersimpan: %.2f\n", savedFactor);
+  } else {
+    scale.set_scale(CALIBRATION_FACTOR);
+  }
   scale.tare();
   Serial.println("[dbg] setup selesai");
 
