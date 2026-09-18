@@ -112,8 +112,7 @@ router.post('/menu', upload.single('foto'), async (req, res) => {
 })
 
 router.get('/prediksi', async (req, res) => {
-  const riwayat = isDemoActive() ? demoData.efficiencyTrend : []
-  const hasil = await aiService.getWastePrediction(riwayat)
+  const hasil = await aiService.getWastePrediction()
   res.json(hasil)
 })
 

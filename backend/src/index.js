@@ -1,6 +1,7 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
+const rateLimit = require('express-rate-limit')
 
 const authRoutes = require('./routes/auth')
 const publicRoutes = require('./routes/public')
@@ -14,8 +15,31 @@ const { startMqtt } = require('./config/mqtt')
 
 const app = express()
 
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN}))
-app.use(express.json())
+const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+
+app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : '*' }))
+app.use(express.json({ limit: '10mb' }))
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { error: 'Terlalu banyak percobaan login. Coba lagi 15 menit lagi.' }
+})
+
+const iotLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 120,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false
+})
+
+app.use('/api/auth/login', loginLimiter)
+app.use('/api/iot', iotLimiter)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', waktu: new Date().toISOString() })

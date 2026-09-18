@@ -1,0 +1,91 @@
+# SPPG MBG — Production Docker Compose
+# Jalankan dari folder deploy/ :  docker compose up -d --build
+# Salin dulu .env.prod.example ke .env (di folder deploy) lalu isi nilainya.
+#
+# Layanan:
+#   backend    -> Express REST API (port 4000, internal)
+#   ai-service -> AI lokal FastAPI (port 8000, internal)
+#   mosquitto  -> Broker MQTT untuk perangkat IoT ESP (port 1883 publik)
+#   caddy      -> Reverse proxy HTTPS untuk /api dan robot (port 80/443 publik)
+
+name: sppg-mbg
+
+services:
+  backend:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      AI_SERVICE_URL: http://ai-service:8000
+      MQTT_URL: mqtt://mosquitto:1883
+    depends_on:
+      ai-service:
+        condition: service_started
+      mosquitto:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - sppg
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:4000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  ai-service:
+    build:
+      context: ..
+      dockerfile: ai_service/Dockerfile
+    restart: unless-stopped
+    networks:
+      - sppg
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  mosquitto:
+    build:
+      context: ./mosquitto
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    volumes:
+      - mosquitto-data:/mosquitto/data
+      - mosquitto-log:/mosquitto/log
+    ports:
+      - "1883:1883"
+      - "9001:9001"
+    restart: unless-stopped
+    networks:
+      - sppg
+
+  caddy:
+    image: caddy:2-alpine
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+    restart: unless-stopped
+    networks:
+      - sppg
+    depends_on:
+      - backend
+
+networks:
+  sppg:
+    driver: bridge
+
+volumes:
+  mosquitto-data:
+  mosquitto-log:
+  caddy-data:
+  caddy-config:

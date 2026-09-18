@@ -3,10 +3,10 @@ const ROBOFLOW_MODEL = process.env.ROBOFLOW_MODEL
 const ROBOFLOW_VERSION = process.env.ROBOFLOW_VERSION || '1'
 
 const KATEGORI_RULES = [
-  { kategori: 'nasi', pola: ['nasi', 'rice', 'karbo'] },
-  { kategori: 'sayur', pola: ['sayur', 'buncis', 'bayam', 'kangkung', 'vegetable', 'wortel', 'brokoli'] },
-  { kategori: 'lauk', pola: ['lauk', 'ayam', 'ikan', 'tempe', 'tahu', 'telur', 'egg', 'meat', 'protein'] },
-  { kategori: 'buah', pola: ['buah', 'fruit', 'pisang', 'melon', 'apel', 'jeruk', 'semangka'] }
+  { kategori: 'nasi', pola: ['nasi', 'rice', 'karbo', 'putih'] },
+  { kategori: 'sayur', pola: ['sayur', 'capcai', 'cap_cai', 'cah', 'buncis', 'bayam', 'kangkung', 'vegetable', 'wortel', 'brokoli', 'sawi', 'bungkus', 'oseng', 'tumis'] },
+  { kategori: 'lauk', pola: ['lauk', 'ayam', 'ikan', 'tempe', 'tahu', 'telur', 'egg', 'meat', 'protein', 'rendang', 'goreng', 'kembung', 'teri', 'bakar'] },
+  { kategori: 'buah', pola: ['buah', 'fruit', 'pisang', 'melon', 'apel', 'jeruk', 'semangka', 'kelengkeng', 'anggur', 'mangga', 'pepaya', 'jambu', 'salak', 'rambutan'] }
 ]
 
 const KATEGORI_LABEL = {

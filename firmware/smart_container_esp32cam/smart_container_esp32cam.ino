@@ -35,12 +35,14 @@
 #define STABLE_MS 1500
 #define RESULT_TIMEOUT_MS 15000
 
-const char* WIFI_SSID = "GANTI-SSID";
-const char* WIFI_PASS = "GANTI-PASSWORD";
-const char* MQTT_SERVER = "broker.emqx.io";
+const char* WIFI_SSID = "Racoon";
+const char* WIFI_PASS = "123456789";
+// PRODUCTION: ganti ke IP publik / domain VPS tempat broker MQTT berjalan.
+// Port 1883 harus diizinkan di firewall VPS.
+const char* MQTT_SERVER = "ISI-IP-ATAU-DOMAIN-VPS";
 const uint16_t MQTT_PORT = 1883;
-const char* MQTT_USER = "";
-const char* MQTT_PASS = "";
+const char* MQTT_USER = "ISI-USERNAME-MQTT";
+const char* MQTT_PASS = "ISI-PASSWORD-MQTT";
 const char* MQTT_PREFIX = "mbg";
 
 LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
@@ -184,7 +186,8 @@ void loop() {
 
   if (!mqttClient.connected() && now - lastMqttAttempt > 5000) {
     lastMqttAttempt = now;
-    mqttClient.connect(String("mbg-container-") + String((uint32_t)ESP.getEfuseMac()), MQTT_USER, MQTT_PASS);
+    String clientId = String("mbg-container-") + String((uint32_t)ESP.getEfuseMac());
+    mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
   }
   mqttClient.loop();
 

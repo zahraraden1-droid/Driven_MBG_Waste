@@ -1,0 +1,11 @@
+{
+	// SPPG MBG — Caddyfile
+	// Ganti domain backend sesuai milik kamu, contoh: api.sppg.id / api.<ip>.sslip.io
+	// IP publik tanpa domain: gunakan "https://188.245.1.23.sslip.io { ... }" agar Caddy membuat sertifikat TLS otomatis.
+	API_DOMAIN = api.example.com
+
+	https://{$API_DOMAIN} {
+		encode zstd gzip
+		reverse_proxy backend:4000
+	}
+}

@@ -15,12 +15,14 @@
 #define MQ135_R0 30.0
 #define SEND_INTERVAL_MS 30000
 
-const char* WIFI_SSID = "GANTI-SSID";
-const char* WIFI_PASS = "GANTI-PASSWORD";
-const char* MQTT_SERVER = "broker.emqx.io";
+const char* WIFI_SSID = "Racoon";
+const char* WIFI_PASS = "123456789";
+// PRODUCTION: ganti ke IP publik / domain VPS tempat broker MQTT berjalan.
+// Port 1883 harus diizinkan di firewall VPS.
+const char* MQTT_SERVER = "ISI-IP-ATAU-DOMAIN-VPS";
 const uint16_t MQTT_PORT = 1883;
-const char* MQTT_USER = "";
-const char* MQTT_PASS = "";
+const char* MQTT_USER = "ISI-USERNAME-MQTT";
+const char* MQTT_PASS = "ISI-PASSWORD-MQTT";
 const char* MQTT_PREFIX = "mbg";
 const char* BATCH_ID = "";
 
@@ -39,11 +41,16 @@ bool maintenanceAktif = false;
 unsigned long lastSend = 0;
 
 void connectWifi() {
+  Serial.println("[dbg] WiFi mulai...");
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASS);
+  int tries = 0;
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
+    tries++;
+    if (tries % 20 == 0) Serial.printf("[dbg] WiFi status=%d\n", WiFi.status());
   }
+  Serial.println("[dbg] WiFi terhubung, IP=" + WiFi.localIP().toString());
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
@@ -57,10 +64,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 }
 
 void connectMqtt() {
+  String clientId = String("mbg-chamber-") + String(ESP.getChipId());
   while (!mqttClient.connected()) {
-    if (mqttClient.connect(String("mbg-chamber-") + String(ESP.getChipId()), MQTT_USER, MQTT_PASS)) {
+    if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
       mqttClient.subscribe(topicMaintenance);
+      Serial.println("[dbg] MQTT terhubung");
     } else {
+      Serial.printf("[dbg] MQTT gagal rc=%d\n", mqttClient.state());
       delay(2000);
     }
   }
@@ -97,27 +107,36 @@ void sendTelemetry() {
     kelembaban = 0;
   }
 
+  float amonia = readNH3Ppm();
+  float substrat = readSuhuSubstrat();
+  float berat = readBeratPanenKg();
+  Serial.printf("[dbg] suhu=%.1f hum=%.1f amonia=%.1f substrat=%.1f berat=%.3f\n", suhuUdara, kelembaban, amonia, substrat, berat);
+
   String body = String("{");
   body += "\"batchId\":\"" + String(BATCH_ID) + "\",";
   body += "\"suhuBilikC\":" + String(suhuUdara, 1) + ",";
   body += "\"kelembabanPersen\":" + String(kelembaban, 1) + ",";
-  body += "\"kadarAmoniaPpm\":" + String(readNH3Ppm(), 1) + ",";
-  body += "\"suhuSubstratC\":" + String(readSuhuSubstrat(), 1) + ",";
-  body += "\"beratMaggotPanenKg\":" + String(readBeratPanenKg(), 3);
+  body += "\"kadarAmoniaPpm\":" + String(amonia, 1) + ",";
+  body += "\"suhuSubstratC\":" + String(substrat, 1) + ",";
+  body += "\"beratMaggotPanenKg\":" + String(berat, 3);
   body += "}";
 
-  mqttClient.publish(topicChamber, body.c_str());
+  bool ok = mqttClient.publish(topicChamber, body.c_str());
+  Serial.printf("[dbg] publish %s\n", ok ? "OK" : "GAGAL");
 }
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("[dbg] boot chamber");
 
   pinMode(A0, INPUT);
   dht.begin();
   ds18b20.begin();
+  Serial.printf("[dbg] sensor temp count: %d\n", ds18b20.getDeviceCount());
   scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
   scale.set_scale(CALIBRATION_FACTOR);
   scale.tare();
+  Serial.println("[dbg] setup selesai");
 
   snprintf(topicChamber, sizeof(topicChamber), "%s/maggot-chamber", MQTT_PREFIX);
   snprintf(topicMaintenance, sizeof(topicMaintenance), "%s/maintenance", MQTT_PREFIX);

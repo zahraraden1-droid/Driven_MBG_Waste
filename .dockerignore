@@ -1,0 +1,14 @@
+node_modules
+.next
+.git
+*.md
+.env
+.env.local
+docs
+supabase
+firmware
+frontend
+maggot conversion chamber.jpeg
+smart container.jpeg
+deploy/mosquitto/*.log
+deploy/.env
