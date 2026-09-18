@@ -62,6 +62,7 @@ State state = STATE_IDLE;
 unsigned long stateStart = 0;
 unsigned long lastStable = 0;
 unsigned long lastMqttAttempt = 0;
+bool btnPerluRelease = false;
 float tareKg = 0;
 float sampleKg = 0;
 bool uploadOk = false;
@@ -198,13 +199,23 @@ void loop() {
       if (digitalRead(BTN_PIN) == LOW) {
         if (lastStable == 0) lastStable = now;
         if (now - lastStable >= BTN_DEBOUNCE_MS && !maintenanceAktif) {
-          tareKg = readFilteredKg();
-          lastStable = 0;
-          lcdBaris("Sedang Memfoto", "/ Model v1");
-          stateStart = now;
-          state = STATE_CAPTURE;
+          if (btnPerluRelease) {
+            lcdBaris("Tunggu Proses", "/ Sebelumnya Belum");
+            lastStable = 0;
+          } else {
+            btnPerluRelease = true;
+            tareKg = readFilteredKg();
+            lastStable = 0;
+            lcdBaris("Sedang Memfoto", "/ Model v1");
+            stateStart = now;
+            state = STATE_CAPTURE;
+          }
         }
       } else {
+        if (btnPerluRelease) {
+          btnPerluRelease = false;
+          lcdBaris("Tekan Tombol", "/ Untuk Memfoto");
+        }
         lastStable = 0;
       }
       break;
@@ -217,6 +228,7 @@ void loop() {
           lastStable = 0;
           state = STATE_DUMP;
         } else {
+          btnPerluRelease = false;
           lcdBaris("Gagal Foto", "/ Tekan Lagi");
           state = STATE_IDLE;
         }
