@@ -70,6 +70,16 @@ void lcdBaris(const char *atas, const char *bawah)
   lcd.print("                ");
 }
 
+void lcdBarisString(String atas, String bawah)
+{
+  lcd.setCursor(0, 0);
+  lcd.print(atas);
+  lcd.print("                ");
+  lcd.setCursor(0, 1);
+  lcd.print(bawah);
+  lcd.print("                ");
+}
+
 float readLbs()
 {
   float v = scale.get_units(1);
@@ -324,7 +334,7 @@ void loop()
     {
       float g = readLbs();
       Serial.printf("BERAT: %.1f gram\n", g);
-      lcdBaris("Berat:", String(g, 1) + " g");
+      lcdBarisString("Berat:", String(g, 1) + " g");
     }
     else if (c == 'T')
     {
