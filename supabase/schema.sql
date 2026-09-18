@@ -95,11 +95,20 @@ alter table maggot_harvests enable row level security;
 alter table sales_records enable row level security;
 alter table ai_predictions enable row level security;
 
-create policy "service role penuh akses" on users for all using (true);
-create policy "service role penuh akses" on maggot_batches for all using (true);
-create policy "service role penuh akses" on sensor_readings for all using (true);
-create policy "service role penuh akses" on menu_uploads for all using (true);
-create policy "service role penuh akses" on waste_records for all using (true);
-create policy "service role penuh akses" on maggot_harvests for all using (true);
-create policy "service role penuh akses" on sales_records for all using (true);
-create policy "service role penuh akses" on ai_predictions for all using (true);
+drop policy if exists "service role penuh akses" on users;
+drop policy if exists "service role penuh akses" on maggot_batches;
+drop policy if exists "service role penuh akses" on sensor_readings;
+drop policy if exists "service role penuh akses" on menu_uploads;
+drop policy if exists "service role penuh akses" on waste_records;
+drop policy if exists "service role penuh akses" on maggot_harvests;
+drop policy if exists "service role penuh akses" on sales_records;
+drop policy if exists "service role penuh akses" on ai_predictions;
+
+create policy "service role penuh akses" on users for all to service_role using (true);
+create policy "service role penuh akses" on maggot_batches for all to service_role using (true);
+create policy "service role penuh akses" on sensor_readings for all to service_role using (true);
+create policy "service role penuh akses" on menu_uploads for all to service_role using (true);
+create policy "service role penuh akses" on waste_records for all to service_role using (true);
+create policy "service role penuh akses" on maggot_harvests for all to service_role using (true);
+create policy "service role penuh akses" on sales_records for all to service_role using (true);
+create policy "service role penuh akses" on ai_predictions for all to service_role using (true);
