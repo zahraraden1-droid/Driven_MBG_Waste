@@ -298,13 +298,19 @@ void setup()
   Serial.println("\n=== ESP8266 MAGGOT CHAMBER FULL TEST ===");
 
   pinMode(A0, INPUT);
+  Serial.println("[1] pinMode A0 OK");
   dht.begin();
+  Serial.println("[2] DHT22 OK");
   ds18b20.begin();
+  Serial.println("[3] DS18B20 OK");
   scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
+  Serial.println("[4] HX711 begin OK");
   scale.tare();
+  Serial.println("[5] HX711 tare OK");
 
   loadCalibration();
   scale.set_scale(scaleFaktor);
+  Serial.println("[6] kalibrasi OK");
 
   snprintf(topicChamber, sizeof(topicChamber), "%s/maggot-chamber", MQTT_PREFIX);
   snprintf(topicChamberResult, sizeof(topicChamberResult), "%s/maggot-chamber/result", MQTT_PREFIX);
@@ -312,8 +318,10 @@ void setup()
 
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
+  Serial.println("[7] MQTT config OK");
 
   initWifi();
+  Serial.println("[8] WiFi selesai");
 
   Serial.println("COMAND (ketik + Enter):");
   Serial.println("  R   -> dump semua sensor (ada/tidak, nilai)");
