@@ -1,4 +1,5 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL || ''
+const API_BASE_URL = API_BASE
 
 function getToken() {
   if (typeof window === 'undefined') return null
@@ -30,6 +31,5 @@ async function request(path, options = {}) {
 export const api = {
   get: (path) => request(path),
   post: (path, body) => request(path, { method: 'POST', body: body instanceof FormData ? body : JSON.stringify(body) }),
-  put: (path, body) => request(path, { method: 'PUT', body: body instanceof FormData ? body : JSON.stringify(body) }),
   postForm: (path, formData) => request(path, { method: 'POST', body: formData })
 }

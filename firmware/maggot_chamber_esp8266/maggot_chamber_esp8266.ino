@@ -15,14 +15,13 @@
 #define MQ135_R0 30.0
 #define SEND_INTERVAL_MS 30000
 
-const char* WIFI_SSID = "Racoon";
-const char* WIFI_PASS = "123456789";
-// PRODUCTION: ganti ke IP publik / domain VPS tempat broker MQTT berjalan.
-// Port 1883 harus diizinkan di firewall VPS.
-const char* MQTT_SERVER = "ISI-IP-ATAU-DOMAIN-VPS";
-const uint16_t MQTT_PORT = 1883;
-const char* MQTT_USER = "ISI-USERNAME-MQTT";
-const char* MQTT_PASS = "ISI-PASSWORD-MQTT";
+const char* WIFI_SSID = "ISI-SSID-WIFI-LOKASI";
+const char* WIFI_PASS = "ISI-PASSWORD-WIFI-LOKASI";
+// PRODUCTION: broker MQTT di Railway via TCP proxy tambahan (bukan domain HTTP).
+const char* MQTT_SERVER = "tramway.proxy.rlwy.net";
+const uint16_t MQTT_PORT = 55251;
+const char* MQTT_USER = "mbg_device";
+const char* MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
 const char* MQTT_PREFIX = "mbg";
 const char* BATCH_ID = "";
 

@@ -6,3 +6,4 @@ dist
 build
 .env.local
 deploy/mosquitto/passwd
+ENV_VARIABLES.txt

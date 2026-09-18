@@ -6,13 +6,13 @@ import { api } from '../lib/api'
 const DemoModeContext = createContext(null)
 
 export function DemoModeProvider({ children }) {
-  const [demoActive, setDemoActive] = useState(true)
+  const [demoActive, setDemoActive] = useState(false)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     api.get('/demo/status')
       .then((data) => setDemoActive(data.demoActive))
-      .catch(() => setDemoActive(true))
+      .catch(() => setDemoActive(false))
       .finally(() => setLoading(false))
   }, [])
 

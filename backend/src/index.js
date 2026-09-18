@@ -20,7 +20,15 @@ const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
   .map((s) => s.trim())
   .filter(Boolean)
 
-app.use(cors({ origin: allowedOrigins.length ? allowedOrigins : '*' }))
+app.use(cors({
+  origin(origin, callback) {
+    if (!origin) return callback(null, true)
+    if (allowedOrigins.includes(origin)) return callback(null, true)
+    if (/^https:\/\/[\w-]+\.vercel\.app$/.test(origin)) return callback(null, true)
+    return callback(null, false)
+  },
+  credentials: true
+}))
 app.use(express.json({ limit: '10mb' }))
 
 const loginLimiter = rateLimit({

@@ -76,10 +76,10 @@ mendeteksi Dockerfile di `backend/`, `ai_service/`, dan `deploy/mosquitto/`.
       SUPABASE_URL=https://rwnabetybudpyxpnydid.supabase.co
       SUPABASE_SERVICE_ROLE_KEY=<dari Supabase>
       JWT_SECRET=<string acak panjang>
-      FRONTEND_ORIGIN=https://sppg-mbg.vercel.app
+      FRONTEND_ORIGIN=https://driven-mbg-waste.vercel.app
       DEVICE_API_KEY=<kunci acak>
       DEMO_MODE=false
-      AI_SERVICE_URL=http://ai-service.up.railway.app     # ganti <railway-app-url>
+      AI_SERVICE_URL=https://aimbgcircular-b657.up.railway.app     # ganti <railway-app-url>
       MQTT_URL=mqtt://<mosquitto-service>.up.railway.app:1883
       MQTT_USERNAME=mbg_device
       MQTT_PASSWORD=<PasswordMQTT>
@@ -149,9 +149,9 @@ Firewall VPS buka: **80**, **443**, dan **1883** (MQTT untuk ESP).
    NEXT_PUBLIC_SUPABASE_URL=https://rwnabetybudpyxpnydid.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key dari Supabase project>
    ```
-4. Deploy. URL frontend jadi `https://sppg-mbg.vercel.app` (atau custom domain).
+4. Deploy. URL frontend jadi `https://driven-mbg-waste.vercel.app` (atau custom domain).
 
-5. Kembali ke Railway service `backend`, set `FRONTEND_ORIGIN=https://sppg-mbg.vercel.app`,
+5. Kembali ke Railway service `backend`, set `FRONTEND_ORIGIN=https://driven-mbg-waste.vercel.app`,
    lalu redeploy.
 
 ---

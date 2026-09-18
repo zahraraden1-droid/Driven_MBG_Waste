@@ -83,10 +83,10 @@ NODE_ENV=production
 SUPABASE_URL=https://rwnabetybudpyxpnydid.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=<dari Supabase>
 JWT_SECRET=<string acak min 32 char>
-FRONTEND_ORIGIN=https://sppg-mbg.vercel.app
+FRONTEND_ORIGIN=https://driven-mbg-waste.vercel.app
 DEVICE_API_KEY=<kunci acak>
 DEMO_MODE=false
-AI_SERVICE_URL=http://ai-service.up.railway.app
+AI_SERVICE_URL=https://aimbgcircular-b657.up.railway.app
 MQTT_URL=mqtt://mbg_device:<MQTT_PASSWORD>@mosquitto.up.railway.app:1883
 MQTT_USERNAME=mbg_device
 MQTT_PASSWORD=<password MQTT acak>
@@ -130,13 +130,13 @@ Jika gagal, lihat **Deployment Logs** service backend.
    NEXT_PUBLIC_SUPABASE_URL=https://rwnabetybudpyxpnydid.supabase.co
    NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key dari Supabase>
    ```
-4. **Deploy**. Berhasil → URL `https://sppg-mbg.vercel.app`.
+4. **Deploy**. Berhasil → URL `https://driven-mbg-waste.vercel.app`.
 
 > ⚠️ Ganti `backend-xxxx` dengan URL Railway service backend kamu. Jika tidak,
 > halaman akan memunculkan fetch error / data kosong. Setelah ganti → **Redeploy** Vercel.
 
 5. Kembali ke Railway service `backend` → Variables → cek `FRONTEND_ORIGIN` sudah
-   `https://sppg-mbg.vercel.app` (bila Vercel memakai domain custom, gunakan domain itu). Redeploy backend.
+   `https://driven-mbg-waste.vercel.app` (bila Vercel memakai domain custom, gunakan domain itu). Redeploy backend.
 
 ---
 
@@ -171,7 +171,7 @@ Backend akan membalas di topic `mbg/maggot-chamber/result` dan menyimpan di Supa
 
 ## FASE 6 — Verifikasi end-to-end (checklist)
 
-- [ ] `https://sppg-mbg.vercel.app` terbuka, KPI angka asli.
+- [ ] `https://driven-mbg-waste.vercel.app` terbuka, KPI angka asli.
 - [ ] Login `superadmin@sekolah.id` berhasil (bukan demo).
 - [ ] Dashboard admin → 5 sensor tampil (dari simulasi/ESP).
 - [ ] Ranking sisa makanan menampilkan data dari Roboflow.

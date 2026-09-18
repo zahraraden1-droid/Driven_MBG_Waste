@@ -1,8 +1,6 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import BatchManager from '../../components/BatchManager'
-import MaintenanceModeToggle from '../../components/MaintenanceModeToggle'
 import SensorMonitor from '../../components/SensorMonitor'
 import AiPredictionPanel from '../../components/AiPredictionPanel'
 import SalesManager from '../../components/SalesManager'
@@ -22,8 +20,6 @@ export default function AdminSekolahPage() {
   return (
     <div className="space-y-6">
       <h1 className="font-display text-2xl">Dashboard admin sekolah</h1>
-      <MaintenanceModeToggle />
-      <BatchManager />
       <SensorMonitor data={monitoring} />
       <AiPredictionPanel prediction={prediction} />
       <SalesManager initialSales={sales} />
