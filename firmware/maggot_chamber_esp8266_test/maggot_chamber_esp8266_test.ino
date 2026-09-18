@@ -305,8 +305,15 @@ void setup()
   Serial.println("[3] DS18B20 OK");
   scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
   Serial.println("[4] HX711 begin OK");
-  scale.tare();
-  Serial.println("[5] HX711 tare OK");
+  if (!scale.wait_ready_timeout(2000, 100))
+  {
+    Serial.println("[4b] HX711 TIDAK SIAP - skip tare (cek VCC 5V, GND sama, DT=D5 SCK=D6)");
+  }
+  else
+  {
+    scale.tare();
+    Serial.println("[5] HX711 tare OK");
+  }
 
   loadCalibration();
   scale.set_scale(scaleFaktor);
