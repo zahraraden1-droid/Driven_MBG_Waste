@@ -29,8 +29,9 @@
 #define LCD_SCL_PIN 14
 #define HX711_DT_PIN 16
 #define HX711_SCK_PIN 15
+#define BTN_PIN 33
+#define BTN_DEBOUNCE_MS 50
 #define CALIBRATION_FACTOR 450.0
-#define TRAY_PLACE_KG 0.05
 #define DUMP_DELTA_KG 0.02
 #define STABLE_MS 1500
 #define RESULT_TIMEOUT_MS 15000
@@ -154,6 +155,8 @@ void setup() {
   scale.set_scale(CALIBRATION_FACTOR);
   scale.tare();
 
+  pinMode(BTN_PIN, INPUT_PULLUP);
+
   snprintf(topicMeta, sizeof(topicMeta), "%s/smart-container/meta", MQTT_PREFIX);
   snprintf(topicFoto, sizeof(topicFoto), "%s/smart-container/foto", MQTT_PREFIX);
   snprintf(topicResult, sizeof(topicResult), "%s/smart-container/result", MQTT_PREFIX);
@@ -171,7 +174,7 @@ void setup() {
 
   initCamera();
 
-  lcdBaris("Silahkan Taruh", "/ Ompreng");
+  lcdBaris("Tekan Tombol", "/ Untuk Memfoto");
   state = STATE_IDLE;
 }
 
@@ -192,17 +195,15 @@ void loop() {
 
   switch (state) {
     case STATE_IDLE:
-      if (!maintenanceAktif && w > TRAY_PLACE_KG) {
+      if (digitalRead(BTN_PIN) == LOW) {
         if (lastStable == 0) lastStable = now;
-        if (now - lastStable >= STABLE_MS) {
-          tareKg = w;
+        if (now - lastStable >= BTN_DEBOUNCE_MS && !maintenanceAktif) {
+          tareKg = readFilteredKg();
           lastStable = 0;
           lcdBaris("Sedang Memfoto", "/ Model v1");
           stateStart = now;
           state = STATE_CAPTURE;
         }
-      } else if (maintenanceAktif) {
-        lcdBaris("Mode Pemeliharaan", "/ Harian");
       } else {
         lastStable = 0;
       }
@@ -216,7 +217,7 @@ void loop() {
           lastStable = 0;
           state = STATE_DUMP;
         } else {
-          lcdBaris("Silahkan Taruh", "/ Ompreng");
+          lcdBaris("Gagal Foto", "/ Tekan Lagi");
           state = STATE_IDLE;
         }
       }
@@ -272,7 +273,7 @@ void loop() {
       if (now - stateStart >= 2000) {
         tareKg = 0;
         lastStable = 0;
-        lcdBaris("Silahkan Taruh", "/ Ompreng");
+        lcdBaris("Tekan Tombol", "/ Untuk Memfoto");
         state = STATE_IDLE;
       }
       break;
