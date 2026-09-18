@@ -52,13 +52,24 @@ async function processChamber({
   const evaluasi = evaluateChamberConditions({ suhuBilikC, kelembabanPersen, kadarAmoniaPpm, suhuSubstratC })
 
   if (supabase) {
+    let batchTerpakai = batchId || null
+    if (!batchTerpakai) {
+      const { data: batchAktif } = await supabase
+        .from('maggot_batches')
+        .select('id')
+        .neq('status', 'selesai_panen')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      batchTerpakai = batchAktif && batchAktif.length ? batchAktif[0].id : null
+    }
+
     const { error } = await supabase.from('sensor_readings').insert({
       suhu_bilik_c: suhuBilikC,
       kelembaban_persen: kelembabanPersen,
       kadar_amonia_ppm: kadarAmoniaPpm,
       suhu_substrat_c: suhuSubstratC,
       estimasi_berat_maggot_kg: beratMaggotPanenKg,
-      batch_id: batchId || null
+      batch_id: batchTerpakai
     })
 
     if (error) {

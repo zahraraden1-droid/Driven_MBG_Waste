@@ -15,15 +15,15 @@
 #define MQ135_R0 30.0
 #define SEND_INTERVAL_MS 30000
 
-const char* WIFI_SSID = "ISI-SSID-WIFI-LOKASI";
-const char* WIFI_PASS = "ISI-PASSWORD-WIFI-LOKASI";
+const char* WIFI_SSID = "R-401";
+const char* WIFI_PASS = "*ruang401";
 // PRODUCTION: broker MQTT di Railway via TCP proxy tambahan (bukan domain HTTP).
 const char* MQTT_SERVER = "tramway.proxy.rlwy.net";
 const uint16_t MQTT_PORT = 55251;
 const char* MQTT_USER = "mbg_device";
 const char* MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
 const char* MQTT_PREFIX = "mbg";
-const char* BATCH_ID = "";
+const char* BATCH_ID = "001";
 
 DHT dht(DHT_PIN, DHT_TYPE);
 OneWire oneWire(DS18B20_PIN);

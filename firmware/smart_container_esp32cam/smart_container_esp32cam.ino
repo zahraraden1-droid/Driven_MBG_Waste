@@ -36,8 +36,8 @@
 #define STABLE_MS 1500
 #define RESULT_TIMEOUT_MS 15000
 
-const char* WIFI_SSID = "ISI-SSID-WIFI-LOKASI";
-const char* WIFI_PASS = "ISI-PASSWORD-WIFI-LOKASI";
+const char* WIFI_SSID = "R-401";
+const char* WIFI_PASS = "*ruang401";
 // PRODUCTION: broker MQTT di Railway via TCP proxy tambahan (bukan domain HTTP).
 const char* MQTT_SERVER = "tramway.proxy.rlwy.net";
 const uint16_t MQTT_PORT = 55251;
