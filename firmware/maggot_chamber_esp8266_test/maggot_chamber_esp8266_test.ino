@@ -5,6 +5,7 @@
 #include <DallasTemperature.h>
 #include <HX711.h>
 #include <EEPROM.h>
+#include <Wire.h>
 
 #define DHT_PIN 4
 #define DHT_TYPE DHT22
