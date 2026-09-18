@@ -31,9 +31,21 @@ Alamat I2C default `0x27` (definisi `LCD_ADDR`, ganti ke `0x3F` jika modul memak
 > kamera tidak aktif. Gunakan **GPIO 15** di atas. Faktor kalibrasi timbangan diatur lewat
 > `CALIBRATION_FACTOR` (gram mentah), sesuaikan dengan timbangan/acuan massa Anda.
 >
-> Load Cell 1 dipasang di bawah piringan/ompreng tempat siswa menaruh sisa makanan.
+> **Desain saat ini:** Load Cell 1 berada di **wadah buangan** (tempat siswa membuang sisa).
+> Ompreng ditaruh di **rak terpisah** (bukan di atas load cell). Berat yang diukur = sisa yang
+> *masuk* ke wadah setelah tombol ditekan.
 
-### 1.3 Catu Daya
+### 1.3 Tombol pemicu foto (rak ompreng)
+
+| Modul | Pin ESP32-CAM | Fungsi |
+|-------|---------------|--------|
+| Tombol 4-pin (kaki kiri) | GPIO 12 | Pemicu foto saat ditekan |
+| Tombol 4-pin (kaki kanan) | GND | Ground |
+
+> Pakai internal pull-up (`INPUT_PULLUP`), jadi cukup tombol ke GND tanpa resistor. Ditekan = foto.
+> Pasang tombol di rak/meja ompreng, dekat posisi di depan kamera.
+
+### 1.4 Catu Daya
 
 | Modul | Input | Output | Koneksi |
 |-------|-------|--------|---------|
@@ -94,7 +106,8 @@ File: `firmware/maggot_chamber_esp8266/maggot_chamber_esp8266.ino`
 |-----------|-----------------|----------------|
 | `WIFI_SSID` / `WIFI_PASS` | SSID & password WiFi lokasi | Sama |
 | `MQTT_SERVER` / `MQTT_PORT` | Alamat broker MQTT | Alamat broker MQTT |
-| `MQTT_USER` / `MQTT_PASS` | Kredensial akun broker (kosong jika broker publik) | Sama |
+| `MQTT_USER` / `MQTT_PASS` | Kredensial akun broker | Sama |
+| `BTN_PIN` | GPIO 12 (tombol foto) | - |
 | `BATCH_ID` | - | UUID batch aktif dari `maggot_batches` (boleh kosong) |
 | `CALIBRATION_FACTOR` | Disesuaikan timbangan | Disesuaikan timbangan |
 
@@ -114,10 +127,12 @@ mengirim data ke broker MQTT. Backend Express berlangganan ke topic-topic beriku
 
 ### 4.1 Broker untuk production
 
+- **Production saat ini (Railway):** broker Mosquitto dibuild dari `deploy/mosquitto`, terhubung
+  lewat TCP proxy Railway. Di firmware pakai:
+  `MQTT_SERVER="tramway.proxy.rlwy.net"`, `MQTT_PORT=55251`, `MQTT_USER="mbg_device"`,
+  `MQTT_PASS="5vfa4wltLH3v30B2WqlUlTp"` (nilai sama dengan env `MQTT_*` di service mosquitto & backend).
+  > Jangan pakai domain `mosquitto-ae86.up.railway.app:1883` — domain HTTP Railway TIDAK meneruskan TCP.
 - **Lokal (uji coba):** jalankan Mosquitto di laptop atau pakai broker publik seperti `broker.emqx.io:1883`.
-- **Production:** pakai broker terkelola (EMQX Cloud, HiveMQ Cloud) atau self-hosted Mosquitto +
-  sertifikat TLS (port 8883). Pastikan `MQTT_URL`, `MQTT_USERNAME`, `MQTT_PASSWORD`, dan
-  `MQTT_TOPIC_PREFIX` di `.env` backend cocok dengan alamat dan kredensial broker.
 - Keamanan perangkat dikendalikan oleh kredensial MQTT tiap perangkat; `DEVICE_API_KEY` tetap dipakai
   untuk fallback endpoint REST (`/api/iot/*`) yang masih tersedia untuk pengujian lewat curl.
 

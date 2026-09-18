@@ -29,7 +29,7 @@
 #define LCD_SCL_PIN 14
 #define HX711_DT_PIN 16
 #define HX711_SCK_PIN 15
-#define BTN_PIN 33
+#define BTN_PIN 12
 #define BTN_DEBOUNCE_MS 50
 #define CALIBRATION_FACTOR 450.0
 #define DUMP_DELTA_KG 0.02
