@@ -8,7 +8,11 @@ PASSWD=/mosquitto/data/passwd
 if [ ! -f "$PASSWD" ] && [ -n "$MQTT_USERNAME" ] && [ -n "$MQTT_PASSWORD" ]; then
   echo "[entrypoint] membuat passwd untuk user '$MQTT_USERNAME'"
   mosquitto_passwd -c -b "$PASSWD" "$MQTT_USERNAME" "$MQTT_PASSWORD"
-  chmod 600 "$PASSWD"
+fi
+
+if [ "$(id -u)" = "0" ]; then
+  echo "[entrypoint] menyesuaikan kepemilikan /mosquitto untuk user mosquitto"
+  chown -R mosquitto:mosquitto /mosquitto/data /mosquitto/log
 fi
 
 exec mosquitto -c /mosquitto/config/mosquitto.conf
