@@ -265,6 +265,85 @@ void testPublishFoto(float beratKg)
   }
 }
 
+void autoTest()
+{
+  delay(500);
+  Serial.println("--- AUTO TEST DIMULAI ---");
+
+  lcdBaris("Menghubungkan", "WiFi ...");
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Serial.print("WiFi connect");
+  int t = 0;
+  while (WiFi.status() != WL_CONNECTED && t < 400)
+  {
+    delay(250);
+    Serial.print(".");
+    t++;
+  }
+  Serial.println();
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    String ip = WiFi.localIP().toString();
+    Serial.printf("WiFi OK, IP=%s RSSI=%d\n", ip.c_str(), WiFi.RSSI());
+    lcdBaris("WiFi OK!", ip.c_str());
+  }
+  else
+  {
+    Serial.println("WiFi GAGAL - cek SSID/pass");
+    lcdBaris("WiFi GAGAL", "cek SSID/pass");
+  }
+  delay(1500);
+
+  if (WiFi.status() == WL_CONNECTED)
+  {
+    lcdBaris("Hubung MQTT", "Railway broker");
+    if (ensureMqtt())
+    {
+      lcdBaris("MQTT OK", "subscribe siap");
+      delay(1200);
+    }
+    else
+    {
+      lcdBaris("MQTT GAGAL", "cek broker/akun");
+      delay(2000);
+    }
+  }
+
+  lcdBaris("Tare Loadcell", "tunggu...");
+  if (scale.wait_ready_timeout(3000, 100))
+  {
+    scale.tare();
+    Serial.println("TARE OK (auto)");
+    lcdBaris("Tare OK", "siap ukur gram");
+  }
+  else
+  {
+    Serial.println("HX711 TIDAK SIAP - skip tare (cek VCC/GND/kabel)");
+    lcdBaris("HX711 tak siap", "cek VCC/GND/kabel");
+  }
+  delay(1200);
+
+  scale.set_scale(scaleFaktor);
+  float g = readLbs();
+  Serial.printf("BERAT saat ini: %.1f gram\n", g);
+
+  if (mqttClient.connected())
+  {
+    lcdBaris("Kirim Foto VGA", "ke Roboflow...");
+    delay(800);
+    testPublishFoto(g / 1000.0);
+  }
+  else
+  {
+    lcdBaris("SKIP Full Test", "MQTT belum OK");
+    delay(1500);
+  }
+
+  Serial.println("--- AUTO TEST SELESAI ---");
+}
+
 void setup()
 {
   Serial.begin(115200);
@@ -280,7 +359,6 @@ void setup()
   scaleFaktor = muatKalibrasi();
   Serial.printf("Scale factor: %.2f\n", scaleFaktor);
   scale.set_scale(scaleFaktor);
-  scale.tare();
 
   pinMode(BTN_PIN, INPUT_PULLUP);
 
@@ -293,20 +371,9 @@ void setup()
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Serial.print("WiFi connect .");
-  int t = 0;
-  while (WiFi.status() != WL_CONNECTED && t < 400)
-  {
-    delay(250);
-    Serial.print(".");
-    t++;
-  }
-  Serial.println();
-  Serial.println(WiFi.status() == WL_CONNECTED ? "WiFi OK" : "WiFi GAGAL - cek SSID/pass");
-
   initCamera();
+
+  autoTest();
 
   Serial.println("COMAND (ketik + Enter):");
   Serial.println("  W        -> baca berat (gram)");
@@ -338,8 +405,15 @@ void loop()
     }
     else if (c == 'T')
     {
-      scale.tare();
-      Serial.println("TARE OK");
+      if (scale.wait_ready_timeout(3000, 100))
+      {
+        scale.tare();
+        Serial.println("TARE OK");
+      }
+      else
+      {
+        Serial.println("HX711 TIDAK SIAP - cek VCC/GND/kabel");
+      }
     }
     else if (c == 'S')
     {
