@@ -41,14 +41,71 @@ const char *MQTT_USER = "mbg_device";
 const char *MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
 const char *MQTT_PREFIX = "mbg";
 
+class BitBangI2C
+{
+public:
+  BitBangI2C(uint8_t sda, uint8_t scl) : _sda(sda), _scl(scl) {}
+  void begin() { pinMode(_sda, OUTPUT); pinMode(_scl, OUTPUT); digitalWrite(_sda, HIGH); digitalWrite(_scl, HIGH); }
+  bool start()
+  {
+    digitalWrite(_sda, HIGH);
+    digitalWrite(_scl, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(_sda, LOW);
+    delayMicroseconds(5);
+    digitalWrite(_scl, LOW);
+    return true;
+  }
+  void stop()
+  {
+    digitalWrite(_sda, LOW);
+    digitalWrite(_scl, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(_sda, HIGH);
+    delayMicroseconds(5);
+  }
+  bool writeByte(uint8_t data)
+  {
+    for (int i = 7; i >= 0; i--)
+    {
+      digitalWrite(_sda, (data >> i) & 1);
+      delayMicroseconds(3);
+      digitalWrite(_scl, HIGH);
+      delayMicroseconds(5);
+      digitalWrite(_scl, LOW);
+      delayMicroseconds(2);
+    }
+    pinMode(_sda, INPUT);
+    digitalWrite(_sda, HIGH);
+    delayMicroseconds(3);
+    digitalWrite(_scl, HIGH);
+    delayMicroseconds(5);
+    bool ack = digitalRead(_sda) == LOW;
+    digitalWrite(_scl, LOW);
+    digitalWrite(_sda, HIGH);
+    pinMode(_sda, OUTPUT);
+    digitalWrite(_sda, HIGH);
+    delayMicroseconds(2);
+    return ack;
+  }
+  void beginTransmission(uint8_t addr) { start(); writeByte(addr << 1); }
+  void write(uint8_t data) { writeByte(data); }
+  void endTransmission() { stop(); }
+
+private:
+  uint8_t _sda;
+  uint8_t _scl;
+};
+
 class PCF8574LCD : public Print
 {
 public:
-  PCF8574LCD(uint8_t addr, TwoWire *bus) : _addr(addr), _bus(bus), _backlight(0x08) {}
+  PCF8574LCD(uint8_t addr, BitBangI2C *bus) : _addr(addr), _bus(bus), _backlight(0x08) {}
   void begin(uint8_t cols, uint8_t rows)
   {
     _cols = cols;
     _rows = rows;
+    _bus->begin();
     delay(50);
     writeNibble(0x03, false);
     delayMicroseconds(4500);
@@ -99,11 +156,11 @@ private:
   uint8_t _cols;
   uint8_t _rows;
   uint8_t _backlight;
-  TwoWire *_bus;
+  BitBangI2C *_bus;
 };
 
-TwoWire wireLCD(1);
-PCF8574LCD lcd(LCD_ADDR, &wireLCD);
+BitBangI2C lcdBus(LCD_SDA_PIN, LCD_SCL_PIN);
+PCF8574LCD lcd(LCD_ADDR, &lcdBus);
 HX711 scale;
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
@@ -303,12 +360,13 @@ bool ensureMqtt()
 
 void scanI2C()
 {
-  Serial.println("Scan I2C bus...");
+  Serial.println("Scan I2C bus (via Wire default)...");
+  Wire.begin();
   int found = 0;
   for (byte addr = 1; addr < 127; addr++)
   {
-    wireLCD.beginTransmission(addr);
-    byte err = wireLCD.endTransmission();
+    Wire.beginTransmission(addr);
+    byte err = Wire.endTransmission();
     if (err == 0)
     {
       Serial.printf("  Device di 0x%02X\n", addr);
@@ -319,6 +377,7 @@ void scanI2C()
     Serial.println("  Tidak ditemukan.");
   else
     Serial.printf("  Total %d device.\n", found);
+  Wire.end();
 }
 
 void testPublishFoto(float beratKg)
@@ -469,7 +528,6 @@ void setup()
   delay(300);
   Serial.println("\n=== ESP32-CAM FULL TEST ===");
 
-  wireLCD.begin(LCD_SDA_PIN, LCD_SCL_PIN);
   lcd.begin(LCD_COLS, LCD_ROWS);
   lcd.setBacklight(HIGH);
   lcdBaris("TEST MODE", "/ ESP32-CAM");
