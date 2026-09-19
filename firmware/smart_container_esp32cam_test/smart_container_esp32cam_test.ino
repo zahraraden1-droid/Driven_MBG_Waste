@@ -2,7 +2,6 @@
 #include <WiFi.h>
 #include <PubSubClient.h>
 #include <Wire.h>
-#include <LiquidCrystal_I2C.h>
 #include <HX711.h>
 #include <Preferences.h>
 
@@ -42,7 +41,69 @@ const char *MQTT_USER = "mbg_device";
 const char *MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
 const char *MQTT_PREFIX = "mbg";
 
-LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
+class PCF8574LCD : public Print
+{
+public:
+  PCF8574LCD(uint8_t addr, TwoWire *bus) : _addr(addr), _bus(bus), _backlight(0x08) {}
+  void begin(uint8_t cols, uint8_t rows)
+  {
+    _cols = cols;
+    _rows = rows;
+    delay(50);
+    writeNibble(0x03, false);
+    delayMicroseconds(4500);
+    writeNibble(0x03, false);
+    delayMicroseconds(4500);
+    writeNibble(0x03, false);
+    delayMicroseconds(150);
+    writeNibble(0x02, false);
+    command(0x28);
+    command(0x0C);
+    command(0x06);
+    command(0x01);
+    delay(2);
+  }
+  void setBacklight(uint8_t on) { _backlight = (on ? 0x08 : 0x00); }
+  void setCursor(uint8_t col, uint8_t row) { command(0x80 | (row == 0 ? 0x00 : 0x40) | col); }
+  virtual size_t write(uint8_t c) { writeByte(c, true); return 1; }
+  void command(uint8_t value) { writeByte(value, false); }
+  void clear() { command(0x01); delay(2); }
+
+private:
+  void expanderWrite(uint8_t data)
+  {
+    _bus->beginTransmission(_addr);
+    _bus->write(data | _backlight);
+    _bus->endTransmission();
+  }
+  void pulseEnable(uint8_t data)
+  {
+    expanderWrite(data | 0x04);
+    delayMicroseconds(1);
+    expanderWrite(data & ~0x04);
+    delayMicroseconds(50);
+  }
+  void writeNibble(uint8_t nibble, bool rs)
+  {
+    uint8_t out = (nibble & 0x0F) << 4;
+    if (rs)
+      out |= 0x01;
+    pulseEnable(out);
+  }
+  void writeByte(uint8_t value, bool rs)
+  {
+    writeNibble(value >> 4, rs);
+    writeNibble(value & 0x0F, rs);
+  }
+  uint8_t _addr;
+  uint8_t _cols;
+  uint8_t _rows;
+  uint8_t _backlight;
+  TwoWire *_bus;
+};
+
+TwoWire wireLCD(1);
+PCF8574LCD lcd(LCD_ADDR, &wireLCD);
 HX711 scale;
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
@@ -109,7 +170,7 @@ float muatKalibrasi()
 
 void probeSensorId()
 {
-  Serial.println("[probe] Scan SCCB di pin 26/27...");
+  Serial.println("[probe] Scan SCCB di pin 26/27 (bus I2C0)...");
   Wire.begin(SIOD_GPIO_NUM, SIOC_GPIO_NUM);
   bool ada = false;
   for (uint8_t addr = 0x20; addr < 0x40; addr++)
@@ -246,8 +307,8 @@ void scanI2C()
   int found = 0;
   for (byte addr = 1; addr < 127; addr++)
   {
-    Wire.beginTransmission(addr);
-    byte err = Wire.endTransmission();
+    wireLCD.beginTransmission(addr);
+    byte err = wireLCD.endTransmission();
     if (err == 0)
     {
       Serial.printf("  Device di 0x%02X\n", addr);
@@ -408,9 +469,9 @@ void setup()
   delay(300);
   Serial.println("\n=== ESP32-CAM FULL TEST ===");
 
-  Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
-  lcd.init();
-  lcd.backlight();
+  wireLCD.begin(LCD_SDA_PIN, LCD_SCL_PIN);
+  lcd.begin(LCD_COLS, LCD_ROWS);
+  lcd.setBacklight(HIGH);
   lcdBaris("TEST MODE", "/ ESP32-CAM");
   Serial.println("[setup] LCD OK");
 
