@@ -115,7 +115,7 @@ void initCamera()
     return;
   }
   Serial.println("[camera] PSRAM OK.");
-  camera_config_t config;
+  camera_config_t config = {0};
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
   config.pin_d0 = Y2_GPIO_NUM;
@@ -139,6 +139,8 @@ void initCamera()
   config.frame_size = FRAMESIZE_VGA;
   config.jpeg_quality = 12;
   config.fb_count = 1;
+  config.fb_location = CAMERA_FB_IN_PSRAM;
+  config.grab_mode = CAMERA_GRAB_LATEST;
 
   esp_err_t res = esp_camera_init(&config);
   if (res != ESP_OK)
