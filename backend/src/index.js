@@ -10,6 +10,7 @@ const dapurMbgRoutes = require('./routes/dapurMbg')
 const reportsRoutes = require('./routes/reports')
 const demoRoutes = require('./routes/demo')
 const iotRoutes = require('./routes/iot')
+const devicesRoutes = require('./routes/devices')
 const maggotBatchesRoutes = require('./routes/maggotBatches')
 const { startMqtt } = require('./config/mqtt')
 
@@ -61,6 +62,7 @@ app.use('/api/dapur-mbg', dapurMbgRoutes)
 app.use('/api/reports', reportsRoutes)
 app.use('/api/demo', demoRoutes)
 app.use('/api/iot', iotRoutes)
+app.use('/api/devices', devicesRoutes)
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint tidak ditemukan' })

@@ -71,6 +71,40 @@ const efficiencyTrend = [
   { minggu: 'Minggu 4', totalLimbahKg: 470 }
 ]
 
+const nowIso = () => new Date().toISOString()
+
+const devices = [
+  {
+    id: 'smart-container',
+    nama: 'Smart Container',
+    tipe: 'esp32-cam',
+    online: true,
+    lastSeen: nowIso(),
+    lastTelemetry: null,
+    statusPesan: { perangkat: 'smart-container', heartbeat: true, beratKg: 0.042, scaleFaktor: 471.25 },
+    calibration: { scaleFaktor: 471.25 },
+    cmdResult: null
+  },
+  {
+    id: 'maggot-chamber',
+    nama: 'Maggot Chamber',
+    tipe: 'esp8266',
+    online: true,
+    lastSeen: nowIso(),
+    lastTelemetry: {
+      batchId: '',
+      suhuBilikC: 29.4,
+      kelembabanPersen: 68,
+      kadarAmoniaPpm: 12,
+      suhuSubstratC: 33.2,
+      beratMaggotPanenKg: 1.45
+    },
+    statusPesan: { perangkat: 'maggot-chamber', scaleFaktor: 449.8, mq135R0: 31.7 },
+    calibration: { scaleFaktor: 449.8, mq135R0: 31.7 },
+    cmdResult: null
+  }
+]
+
 module.exports = {
   publicKpi,
   wasteByCategory,
@@ -81,5 +115,6 @@ module.exports = {
   aiPrediction,
   salesRecords,
   aiCorrelationTable,
-  efficiencyTrend
+  efficiencyTrend,
+  devices
 }

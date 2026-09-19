@@ -246,6 +246,8 @@ char topicMeta[128];
 char topicFoto[128];
 char topicResult[128];
 char topicMaintenance[64];
+char topicStatus[128];
+char topicCmd[128];
 
 Preferences prefs;
 float scaleFaktor = CALIBRATION_FACTOR;
@@ -256,6 +258,7 @@ State state = STATE_IDLE;
 unsigned long stateStart = 0;
 unsigned long lastStable = 0;
 unsigned long lastMqttAttempt = 0;
+unsigned long lastHeartbeat = 0;
 bool btnPerluRelease = false;
 float tareKg = 0;
 float sampleKg = 0;
@@ -303,6 +306,46 @@ float muatKalibrasi()
   float factor = prefs.getFloat("SCALE_FACTOR", 0);
   prefs.end();
   return factor > 0 ? factor : CALIBRATION_FACTOR;
+}
+
+// =====================================================================
+//  Status & perintah (kalibrasi remote dari dashboard)
+// =====================================================================
+String jsonKeyValue(const String &msg, const char *key)
+{
+  String p = String("\"") + key + "\":";
+  int i = msg.indexOf(p);
+  if (i < 0)
+    return "";
+  int j = i + p.length();
+  String val;
+  while (j < msg.length() && msg[j] != ',' && msg[j] != '}' && msg[j] != '\n' && msg[j] != '\r')
+  {
+    char c = msg[j];
+    if (c == '"')
+    {
+      j++;
+      continue;
+    }
+    val += c;
+    j++;
+  }
+  val.trim();
+  return val;
+}
+
+void publishStatus(const char *cmd, bool ok, const String &catatan)
+{
+  if (!mqttClient.connected())
+    return;
+  String body = String("{\"perangkat\":\"smart-container\",\"cmd\":\"") + String(cmd) + "\",\"ok\":" + (ok ? "true" : "false");
+  body += ",\"scaleFaktor\":" + String(scaleFaktor, 2);
+  if (catatan.length() > 0)
+  {
+    body += ",\"catatan\":\"" + catatan + "\"";
+  }
+  body += "}";
+  mqttClient.publish(topicStatus, body.c_str());
 }
 
 // =====================================================================
@@ -435,6 +478,43 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
     compact.replace(" ", "");
     maintenanceAktif = compact.indexOf("\"aktif\":true") >= 0;
   }
+  else if (strcmp(topic, topicCmd) == 0)
+  {
+    String compact = msg;
+    compact.replace(" ", "");
+    String cmd = jsonKeyValue(compact, "cmd");
+    float val = jsonKeyValue(compact, "value").toFloat();
+
+    if (cmd == "status")
+    {
+      publishStatus("status", true, "");
+    }
+    else if (cmd == "tare")
+    {
+      bool ok = scale.wait_ready_timeout(500, 10);
+      if (ok)
+        scale.tare();
+      publishStatus("tare", ok, ok ? "" : "HX711 tidak siap");
+    }
+    else if (cmd == "set_scale_factor")
+    {
+      if (val > 0 && val < 1000000.0f)
+      {
+        simpanKalibrasi(val);
+        publishStatus("set_scale_factor", true, String(val, 2));
+      }
+      else
+      {
+        publishStatus("set_scale_factor", false, "nilai tidak valid");
+      }
+    }
+    else if (cmd == "reboot")
+    {
+      publishStatus("reboot", true, "");
+      delay(500);
+      ESP.restart();
+    }
+  }
 }
 
 bool ensureMqtt()
@@ -456,6 +536,7 @@ bool ensureMqtt()
   {
     mqttClient.subscribe(topicMaintenance);
     mqttClient.subscribe(topicResult);
+    mqttClient.subscribe(topicCmd);
     pumpMqtt(300); // buang pesan lama (retained) yang langsung dikirim broker
     return true;
   }
@@ -528,6 +609,8 @@ void setup()
   snprintf(topicFoto, sizeof(topicFoto), "%s/smart-container/foto", MQTT_PREFIX);
   snprintf(topicResult, sizeof(topicResult), "%s/smart-container/result", MQTT_PREFIX);
   snprintf(topicMaintenance, sizeof(topicMaintenance), "%s/maintenance", MQTT_PREFIX);
+  snprintf(topicStatus, sizeof(topicStatus), "%s/smart-container/status", MQTT_PREFIX);
+  snprintf(topicCmd, sizeof(topicCmd), "%s/smart-container/cmd", MQTT_PREFIX);
 
   if (!mqttClient.setBufferSize(MQTT_BUFFER))
     Serial.println("[setup] PERINGATAN: alokasi buffer MQTT gagal");
@@ -560,6 +643,16 @@ void loop()
     ensureMqtt();
   }
   mqttClient.loop();
+
+  if (mqttClient.connected() && !maintenanceAktif && now - lastHeartbeat >= 60000)
+  {
+    lastHeartbeat = now;
+    String body = String("{\"perangkat\":\"smart-container\",\"heartbeat\":true,\"beratKg\":");
+    body += String(w, 3);
+    body += ",\"scaleFaktor\":" + String(scaleFaktor, 2);
+    body += ",\"uptimeMs\":" + String(millis()) + "}";
+    mqttClient.publish(topicStatus, body.c_str());
+  }
 
   switch (state) {
     case STATE_IDLE:

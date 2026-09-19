@@ -62,12 +62,15 @@ PubSubClient mqttClient(wifiClient);
 
 char topicChamber[128];
 char topicMaintenance[64];
+char topicCmd[128];
+char topicStatus[128];
 
 bool maintenanceAktif = false;
 bool firstSend = true;
 bool mqttTried = false;
 unsigned long lastSend = 0;
 unsigned long lastMqttTry = 0;
+unsigned long sendIntervalMs = SEND_INTERVAL_MS; // bisa diubah remote lewat perintah set_interval
 float scaleFaktor = CALIBRATION_FACTOR;
 float mq135R0 = MQ135_R0_DEFAULT;
 
@@ -100,6 +103,66 @@ void loadCalibration()
   }
 }
 
+void saveScaleFactor(float f)
+{
+  EEPROM.begin(16);
+  EEPROM.put(EEPROM_ADDR_SCALE, f);
+  EEPROM.commit();
+  EEPROM.end();
+  scaleFaktor = f;
+  scale.set_scale(scaleFaktor);
+}
+
+void saveMq135R0(float r)
+{
+  EEPROM.begin(16);
+  EEPROM.put(EEPROM_ADDR_R0, r);
+  EEPROM.commit();
+  EEPROM.end();
+  mq135R0 = r;
+}
+
+// ======================================================================
+//  Status & perintah (kalibrasi remote dari dashboard)
+// ======================================================================
+String jsonKeyValue(const String &msg, const char *key)
+{
+  String p = String("\"") + key + "\":";
+  int i = msg.indexOf(p);
+  if (i < 0)
+    return "";
+  int j = i + p.length();
+  String val;
+  while (j < msg.length() && msg[j] != ',' && msg[j] != '}' && msg[j] != '\n' && msg[j] != '\r')
+  {
+    char c = msg[j];
+    if (c == '"')
+    {
+      j++;
+      continue;
+    }
+    val += c;
+    j++;
+  }
+  val.trim();
+  return val;
+}
+
+void publishStatus(const char *cmd, bool ok, const String &catatan)
+{
+  if (!mqttClient.connected())
+    return;
+  String body = String("{\"perangkat\":\"maggot-chamber\",\"cmd\":\"") + String(cmd) + "\",\"ok\":" + (ok ? "true" : "false");
+  body += ",\"scaleFaktor\":" + String(scaleFaktor, 2);
+  body += ",\"mq135R0\":" + String(mq135R0, 2);
+  if (catatan.length() > 0)
+  {
+    body += ",\"catatan\":\"" + catatan + "\"";
+  }
+  body += "}";
+  mqttClient.publish(topicStatus, body.c_str());
+}
+
 // ======================================================================
 //  WiFi & MQTT
 // ======================================================================
@@ -125,16 +188,80 @@ bool connectWifi(uint32_t timeoutMs)
 
 void mqttCallback(char *topic, byte *payload, unsigned int length)
 {
-  if (strcmp(topic, topicMaintenance) != 0)
-    return;
-
   String msg;
   msg.reserve(length + 1);
   for (unsigned int i = 0; i < length; i++)
     msg += (char)payload[i];
-  msg.replace(" ", ""); // FIX: toleran terhadap spasi di JSON ("aktif": true)
-  maintenanceAktif = msg.indexOf("\"aktif\":true") >= 0;
-  Serial.printf("[dbg] maintenance=%s\n", maintenanceAktif ? "ON" : "OFF");
+
+  if (strcmp(topic, topicMaintenance) == 0)
+  {
+    msg.replace(" ", ""); // FIX: toleran terhadap spasi di JSON ("aktif": true)
+    maintenanceAktif = msg.indexOf("\"aktif\":true") >= 0;
+    Serial.printf("[dbg] maintenance=%s\n", maintenanceAktif ? "ON" : "OFF");
+  }
+  else if (strcmp(topic, topicCmd) == 0)
+  {
+    String compact = msg;
+    compact.replace(" ", "");
+    String cmd = jsonKeyValue(compact, "cmd");
+    float val = jsonKeyValue(compact, "value").toFloat();
+
+    Serial.printf("[dbg] cmd diterima: %s (value=%.2f)\n", cmd.c_str(), val);
+
+    if (cmd == "status")
+    {
+      publishStatus("status", true, "");
+    }
+    else if (cmd == "tare")
+    {
+      bool ok = scale.wait_ready_timeout(500, 10);
+      if (ok)
+        scale.tare();
+      publishStatus("tare", ok, ok ? "" : "HX711 tidak siap");
+    }
+    else if (cmd == "set_scale_factor")
+    {
+      if (validCal(val))
+      {
+        saveScaleFactor(val);
+        publishStatus("set_scale_factor", true, "");
+      }
+      else
+      {
+        publishStatus("set_scale_factor", false, "nilai tidak valid");
+      }
+    }
+    else if (cmd == "set_r0")
+    {
+      if (validCal(val))
+      {
+        saveMq135R0(val);
+        publishStatus("set_r0", true, "");
+      }
+      else
+      {
+        publishStatus("set_r0", false, "nilai tidak valid");
+      }
+    }
+    else if (cmd == "set_interval")
+    {
+      if (val >= 1000 && val <= 3600000)
+      {
+        sendIntervalMs = (unsigned long)val;
+        publishStatus("set_interval", true, String(val));
+      }
+      else
+      {
+        publishStatus("set_interval", false, "rentang 1000-3600000");
+      }
+    }
+    else if (cmd == "reboot")
+    {
+      publishStatus("reboot", true, "");
+      delay(500);
+      ESP.restart();
+    }
+  }
 }
 
 // FIX: sebelumnya connectMqtt() adalah while(!connected) tanpa akhir yang memblok seluruh loop().
@@ -152,6 +279,7 @@ bool ensureMqtt()
   if (mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS))
   {
     mqttClient.subscribe(topicMaintenance);
+    mqttClient.subscribe(topicCmd);
     Serial.println("[dbg] MQTT terhubung");
     return true;
   }
@@ -286,6 +414,10 @@ void sendTelemetry()
 
   bool ok = mqttClient.publish(topicChamber, body.c_str());
   Serial.printf("[dbg] publish %s\n", ok ? "OK" : "GAGAL");
+
+  String cal = String("{\"perangkat\":\"maggot-chamber\",\"scaleFaktor\":") + String(scaleFaktor, 2);
+  cal += String(",\"mq135R0\":") + String(mq135R0, 2) + String("}");
+  mqttClient.publish(topicStatus, cal.c_str());
 }
 
 // ======================================================================
@@ -313,6 +445,8 @@ void setup()
 
   snprintf(topicChamber, sizeof(topicChamber), "%s/maggot-chamber", MQTT_PREFIX);
   snprintf(topicMaintenance, sizeof(topicMaintenance), "%s/maintenance", MQTT_PREFIX);
+  snprintf(topicCmd, sizeof(topicCmd), "%s/maggot-chamber/cmd", MQTT_PREFIX);
+  snprintf(topicStatus, sizeof(topicStatus), "%s/maggot-chamber/status", MQTT_PREFIX);
 
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
@@ -337,7 +471,7 @@ void loop()
   if (mqttOk)
     mqttClient.loop();
 
-  bool due = firstSend || (millis() - lastSend >= SEND_INTERVAL_MS); // FIX: kirim pertama langsung, bukan menunggu 30 dtk
+  bool due = firstSend || (millis() - lastSend >= sendIntervalMs); // FIX: kirim pertama langsung, bukan menunggu interval
   if (mqttOk && !maintenanceAktif && due)
   {
     firstSend = false;
