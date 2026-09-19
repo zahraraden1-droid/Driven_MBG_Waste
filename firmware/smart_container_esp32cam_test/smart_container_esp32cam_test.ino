@@ -107,8 +107,41 @@ float muatKalibrasi()
   return factor > 0 ? factor : CALIBRATION_FACTOR;
 }
 
+void probeSensorId()
+{
+  Serial.println("[probe] Scan SCCB di pin 26/27...");
+  Wire.begin(SIOD_GPIO_NUM, SIOC_GPIO_NUM);
+  bool ada = false;
+  for (uint8_t addr = 0x20; addr < 0x40; addr++)
+  {
+    Wire.beginTransmission(addr);
+    if (Wire.endTransmission() == 0)
+    {
+      ada = true;
+      uint8_t regs[4] = {0x0A, 0x0B, 0x0C, 0x0D};
+      Serial.printf("[probe] Sensor merespons di 0x%02X:", addr);
+      for (int i = 0; i < 4; i++)
+      {
+        Wire.beginTransmission(addr);
+        Wire.write(regs[i]);
+        Wire.endTransmission(false);
+        Wire.requestFrom(addr, (uint8_t)1);
+        uint8_t v = Wire.available() ? Wire.read() : 0xFF;
+        Serial.printf(" reg0x%02X=0x%02X", regs[i], v);
+      }
+      Serial.println();
+    }
+  }
+  if (!ada)
+  {
+    Serial.println("[probe] TIDAK ADA sensor merespons di 0x20-0x3F.");
+  }
+  Wire.end();
+}
+
 void initCamera()
 {
+  probeSensorId();
   if (!psramFound())
   {
     Serial.println("[camera] PSRAM TIDAK ADA. Kamera DI-SKIP. Aktifkan Tools->PSRAM di Arduino IDE.");
