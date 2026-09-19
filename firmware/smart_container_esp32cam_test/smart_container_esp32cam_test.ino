@@ -55,6 +55,7 @@ char topicMaintenance[64];
 Preferences prefs;
 float scaleFaktor = CALIBRATION_FACTOR;
 camera_fb_t *fotoFb = NULL;
+bool kameraAktif = false;
 bool gotResult = false;
 bool latestStatusOk = false;
 String latestResultDetail = "";
@@ -108,6 +109,12 @@ float muatKalibrasi()
 
 void initCamera()
 {
+  if (!psramFound())
+  {
+    Serial.println("[camera] PSRAM TIDAK ADA. Kamera DI-SKIP. Aktifkan Tools->PSRAM di Arduino IDE.");
+    return;
+  }
+  Serial.println("[camera] PSRAM OK.");
   camera_config_t config;
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -139,6 +146,7 @@ void initCamera()
     Serial.printf("KAMERA GAGAL INIT: 0x%x\n", res);
     return;
   }
+  kameraAktif = true;
   Serial.println("Kamera OK (VGA).");
 }
 
@@ -219,6 +227,12 @@ void scanI2C()
 
 void testPublishFoto(float beratKg)
 {
+  if (!kameraAktif)
+  {
+    Serial.println("Kamera tidak aktif (PSRAM?). Perintah foto dilewati.");
+    lcdBaris("Kamera di-skip", "PSRAM tidak ada");
+    return;
+  }
   gotResult = false;
   latestStatusOk = false;
 
@@ -331,9 +345,18 @@ void autoTest()
 
   if (mqttClient.connected())
   {
-    lcdBaris("Kirim Foto VGA", "ke Roboflow...");
-    delay(800);
-    testPublishFoto(g / 1000.0);
+    if (kameraAktif)
+    {
+      lcdBaris("Kirim Foto VGA", "ke Roboflow...");
+      delay(800);
+      testPublishFoto(g / 1000.0);
+    }
+    else
+    {
+      lcdBaris("Kamera di-skip", "PSRAM tidak ada");
+      Serial.println("Full test foto dilewati (kamera tidak aktif).");
+      delay(1500);
+    }
   }
   else
   {
@@ -354,11 +377,13 @@ void setup()
   lcd.init();
   lcd.backlight();
   lcdBaris("TEST MODE", "/ ESP32-CAM");
+  Serial.println("[setup] LCD OK");
 
   scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
   scaleFaktor = muatKalibrasi();
   Serial.printf("Scale factor: %.2f\n", scaleFaktor);
   scale.set_scale(scaleFaktor);
+  Serial.println("[setup] HX711 OK");
 
   pinMode(BTN_PIN, INPUT_PULLUP);
 
@@ -370,6 +395,7 @@ void setup()
   mqttClient.setBufferSize(131072);
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
+  Serial.println("[setup] MQTT config OK");
 
   initCamera();
 
