@@ -16,6 +16,10 @@ const { startMqtt } = require('./config/mqtt')
 
 const app = express()
 
+// Trust proxy pertama (Railway/nginx di belakang HTTPS). Tanpa ini express-rate-limit
+// error ERR_ERL_UNEXPECTED_X_FORWARDED_FOR karena header X-Forwarded-For dari proxy.
+app.set('trust proxy', 1)
+
 const allowedOrigins = (process.env.FRONTEND_ORIGIN || '')
   .split(',')
   .map((s) => s.trim())
