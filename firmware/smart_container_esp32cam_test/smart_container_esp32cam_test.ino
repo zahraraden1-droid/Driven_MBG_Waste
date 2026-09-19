@@ -1,10 +1,17 @@
+/*
+ * ESP32-CAM FULL TEST - smart container
+ * HX711 (berat) + LCD I2C (bit-bang) + kamera + MQTT (Railway) -> backend Roboflow
+ *
+ * Bagian yang diubah dari versi sebelumnya ditandai dengan komentar "FIX:".
+ */
+
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include <Wire.h>
 #include <HX711.h>
 #include <Preferences.h>
 
+// ---------------- Pin kamera (AI Thinker ESP32-CAM) ----------------
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 0
@@ -22,16 +29,25 @@
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
+// ---------------- Pin & konfigurasi periferal ----------------
 #define LCD_ADDR 0x27
 #define LCD_COLS 16
 #define LCD_ROWS 2
 #define LCD_SDA_PIN 13
 #define LCD_SCL_PIN 14
-#define HX711_DT_PIN 16
+#define HX711_DT_PIN 2 // FIX: GPIO16 = CS PSRAM di ESP32-CAM, jangan dipakai. GPIO2 strapping pin: kalau upload gagal, lepas kabel DT sebentar.
 #define HX711_SCK_PIN 15
-#define BTN_PIN 12
+#define BTN_PIN 12 // tombol ke GND (aman untuk strapping pin GPIO12)
 #define CALIBRATION_FACTOR 450.0
+
+// ---------------- Parameter perilaku ----------------
 #define RESULT_TIMEOUT_MS 20000
+#define WIFI_TIMEOUT_MS 30000
+#define HX711_TIMEOUT_MS 1000
+#define BTN_DEBOUNCE_MS 50
+#define FOTO_FRAME_SIZE FRAMESIZE_VGA // FIX: sebelumnya UXGA padahal pesan/log bilang VGA. Boleh dinaikkan (SVGA/XGA/UXGA), publish sekarang di-stream.
+#define MQTT_BUFFER 4096              // FIX: cukup untuk header + pesan result; foto dikirim per-chunk
+#define MQTT_CHUNK 1024
 
 const char *WIFI_SSID = "R-408";
 const char *WIFI_PASS = "*ruang408";
@@ -41,11 +57,20 @@ const char *MQTT_USER = "mbg_device";
 const char *MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
 const char *MQTT_PREFIX = "mbg";
 
+// =====================================================================
+//  I2C bit-bang (dipakai karena pin default Wire bentrok dengan kamera)
+// =====================================================================
 class BitBangI2C
 {
 public:
   BitBangI2C(uint8_t sda, uint8_t scl) : _sda(sda), _scl(scl) {}
-  void begin() { pinMode(_sda, OUTPUT); pinMode(_scl, OUTPUT); digitalWrite(_sda, HIGH); digitalWrite(_scl, HIGH); }
+  void begin()
+  {
+    pinMode(_sda, OUTPUT);
+    pinMode(_scl, OUTPUT);
+    digitalWrite(_sda, HIGH);
+    digitalWrite(_scl, HIGH);
+  }
   bool start()
   {
     digitalWrite(_sda, HIGH);
@@ -88,9 +113,22 @@ public:
     delayMicroseconds(2);
     return ack;
   }
-  void beginTransmission(uint8_t addr) { start(); writeByte(addr << 1); }
+  void beginTransmission(uint8_t addr)
+  {
+    start();
+    writeByte(addr << 1);
+  }
   void write(uint8_t data) { writeByte(data); }
   void endTransmission() { stop(); }
+
+  // FIX: dipakai untuk scan I2C yang benar-benar lewat pin LCD (13/14)
+  bool probe(uint8_t addr)
+  {
+    start();
+    bool ack = writeByte(addr << 1);
+    stop();
+    return ack;
+  }
 
 private:
   uint8_t _sda;
@@ -100,7 +138,11 @@ private:
 class PCF8574LCD : public Print
 {
 public:
-  PCF8574LCD(uint8_t addr, BitBangI2C *bus) : _addr(addr), _bus(bus), _backlight(0x08) {}
+  using Print::write; // FIX: supaya overload write() bawaan Print tidak tersembunyi
+
+  PCF8574LCD(uint8_t addr, BitBangI2C *bus)
+      : _addr(addr), _cols(16), _rows(2), _backlight(0x08), _bus(bus) {}
+
   void begin(uint8_t cols, uint8_t rows)
   {
     _cols = cols;
@@ -120,11 +162,35 @@ public:
     command(0x01);
     delay(2);
   }
-  void setBacklight(uint8_t on) { _backlight = (on ? 0x08 : 0x00); }
+  // FIX: sebelumnya hanya mengubah variabel, baru berlaku di tulis berikutnya
+  void setBacklight(uint8_t on)
+  {
+    _backlight = (on ? 0x08 : 0x00);
+    expanderWrite(0);
+  }
   void setCursor(uint8_t col, uint8_t row) { command(0x80 | (row == 0 ? 0x00 : 0x40) | col); }
-  virtual size_t write(uint8_t c) { writeByte(c, true); return 1; }
+  virtual size_t write(uint8_t c)
+  {
+    writeByte(c, true);
+    return 1;
+  }
   void command(uint8_t value) { writeByte(value, false); }
-  void clear() { command(0x01); delay(2); }
+  void clear()
+  {
+    command(0x01);
+    delay(2);
+  }
+
+  // FIX: tulis tepat _cols karakter (dipotong / diisi spasi), tidak menulis melebihi lebar layar
+  void printLine(uint8_t row, const char *text)
+  {
+    setCursor(0, row);
+    uint8_t i = 0;
+    for (; text[i] && i < _cols; i++)
+      write((uint8_t)text[i]);
+    for (; i < _cols; i++)
+      write((uint8_t)' ');
+  }
 
 private:
   void expanderWrite(uint8_t data)
@@ -159,6 +225,9 @@ private:
   BitBangI2C *_bus;
 };
 
+// =====================================================================
+//  Global
+// =====================================================================
 BitBangI2C lcdBus(LCD_SDA_PIN, LCD_SCL_PIN);
 PCF8574LCD lcd(LCD_ADDR, &lcdBus);
 HX711 scale;
@@ -174,37 +243,40 @@ Preferences prefs;
 float scaleFaktor = CALIBRATION_FACTOR;
 camera_fb_t *fotoFb = NULL;
 bool kameraAktif = false;
-bool gotResult = false;
+volatile bool gotResult = false;
 bool latestStatusOk = false;
 String latestResultDetail = "";
 unsigned long resultStart = 0;
+bool modeProduksi = false; // FIX: mode tombol sekarang berupa flag, bukan while(true) yang mengunci serial
 
+// =====================================================================
+//  LCD helper
+// =====================================================================
 void lcdBaris(const char *atas, const char *bawah)
 {
-  lcd.setCursor(0, 0);
-  lcd.print(atas);
-  lcd.print("                ");
-  lcd.setCursor(0, 1);
-  lcd.print(bawah);
-  lcd.print("                ");
+  lcd.printLine(0, atas);
+  lcd.printLine(1, bawah);
 }
 
-void lcdBarisString(String atas, String bawah)
+void lcdBarisString(const String &atas, const String &bawah)
 {
-  lcd.setCursor(0, 0);
-  lcd.print(atas);
-  lcd.print("                ");
-  lcd.setCursor(0, 1);
-  lcd.print(bawah);
-  lcd.print("                ");
+  lcdBaris(atas.c_str(), bawah.c_str());
 }
 
-float readLbs()
+// =====================================================================
+//  Timbangan
+// =====================================================================
+// FIX: sebelumnya get_units() bisa menggantung selamanya kalau HX711 tidak terpasang,
+// dan hasil error diam-diam dianggap 0 gram. Sekarang ada timeout dan status sukses/gagal.
+bool readGrams(float &g)
 {
-  float v = scale.get_units(1);
-  if (isnan(v) || v > 1000000)
-    v = 0;
-  return v;
+  if (!scale.wait_ready_timeout(HX711_TIMEOUT_MS, 10))
+    return false;
+  float v = scale.get_units(5); // rata-rata 5 sampel (sebelumnya 1 sampel = noisy)
+  if (isnan(v) || isinf(v) || fabsf(v) > 1000000.0f)
+    return false;
+  g = v;
+  return true;
 }
 
 void simpanKalibrasi(float factor)
@@ -225,47 +297,17 @@ float muatKalibrasi()
   return factor > 0 ? factor : CALIBRATION_FACTOR;
 }
 
-void probeSensorId()
-{
-  Serial.println("[probe] Scan SCCB di pin 26/27 (bus I2C0)...");
-  Wire.begin(SIOD_GPIO_NUM, SIOC_GPIO_NUM);
-  bool ada = false;
-  for (uint8_t addr = 0x20; addr < 0x40; addr++)
-  {
-    Wire.beginTransmission(addr);
-    if (Wire.endTransmission() == 0)
-    {
-      ada = true;
-      uint8_t regs[4] = {0x0A, 0x0B, 0x0C, 0x0D};
-      Serial.printf("[probe] Sensor merespons di 0x%02X:", addr);
-      for (int i = 0; i < 4; i++)
-      {
-        Wire.beginTransmission(addr);
-        Wire.write(regs[i]);
-        Wire.endTransmission(false);
-        Wire.requestFrom(addr, (uint8_t)1);
-        uint8_t v = Wire.available() ? Wire.read() : 0xFF;
-        Serial.printf(" reg0x%02X=0x%02X", regs[i], v);
-      }
-      Serial.println();
-    }
-  }
-  if (!ada)
-  {
-    Serial.println("[probe] TIDAK ADA sensor merespons di 0x20-0x3F.");
-  }
-  Wire.end();
-}
-
+// =====================================================================
+//  Kamera
+// =====================================================================
 void initCamera()
 {
-  probeSensorId();
-  if (!psramFound())
-  {
-    Serial.println("[camera] PSRAM TIDAK ADA. Kamera DI-SKIP. Aktifkan Tools->PSRAM di Arduino IDE.");
-    return;
-  }
-  Serial.println("[camera] PSRAM OK.");
+  bool psram = psramFound();
+  if (psram)
+    Serial.println("[camera] PSRAM OK.");
+  else
+    Serial.println("[camera] PSRAM TIDAK ADA -> mode DRAM (1 buffer). Aktifkan Tools->PSRAM di Arduino IDE untuk performa terbaik.");
+
   camera_config_t config = {0};
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -287,11 +329,23 @@ void initCamera()
   config.pin_reset = RESET_GPIO_NUM;
   config.xclk_freq_hz = 20000000;
   config.pixel_format = PIXFORMAT_JPEG;
-  config.frame_size = FRAMESIZE_VGA;
-  config.jpeg_quality = 12;
-  config.fb_count = 1;
-  config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.grab_mode = CAMERA_GRAB_LATEST;
+  config.frame_size = FOTO_FRAME_SIZE;
+
+  // FIX: sebelumnya kamera di-SKIP total kalau PSRAM tidak ada, sehingga cabang fallback di bawah tidak pernah jalan.
+  if (psram)
+  {
+    config.jpeg_quality = 10;
+    config.fb_count = 2;
+    config.fb_location = CAMERA_FB_IN_PSRAM;
+    config.grab_mode = CAMERA_GRAB_LATEST;
+  }
+  else
+  {
+    config.jpeg_quality = 12;
+    config.fb_count = 1;
+    config.fb_location = CAMERA_FB_IN_DRAM;
+    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  }
 
   esp_err_t res = esp_camera_init(&config);
   if (res != ESP_OK)
@@ -300,35 +354,85 @@ void initCamera()
     return;
   }
   kameraAktif = true;
-  Serial.println("Kamera OK (VGA).");
+
+  // FIX: beberapa frame pertama sering gelap/over-exposed sebelum auto-exposure stabil
+  for (int i = 0; i < 3; i++)
+  {
+    camera_fb_t *warm = esp_camera_fb_get();
+    if (warm)
+      esp_camera_fb_return(warm);
+    delay(100);
+  }
+  Serial.println("Kamera OK.");
 }
 
 bool capturePhoto()
 {
+  if (!kameraAktif)
+    return false;
   if (fotoFb)
   {
     esp_camera_fb_return(fotoFb);
     fotoFb = NULL;
   }
+  // FIX: buang 1 frame lama di buffer supaya foto = kondisi terkini
+  camera_fb_t *stale = esp_camera_fb_get();
+  if (stale)
+    esp_camera_fb_return(stale);
   fotoFb = esp_camera_fb_get();
   return fotoFb != NULL;
 }
 
+// =====================================================================
+//  WiFi & MQTT
+// =====================================================================
+// FIX: WiFi sekarang bisa disambung ulang dari mana saja (sebelumnya hanya di autoTest & perintah M)
+bool ensureWifi(uint32_t timeoutMs = WIFI_TIMEOUT_MS)
+{
+  if (WiFi.status() == WL_CONNECTED)
+    return true;
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false); // upload foto lebih stabil tanpa modem sleep
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  uint32_t t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs)
+  {
+    delay(250);
+    Serial.print(".");
+  }
+  Serial.println();
+  return WiFi.status() == WL_CONNECTED;
+}
+
+void pumpMqtt(uint32_t ms)
+{
+  uint32_t t0 = millis();
+  while (millis() - t0 < ms)
+  {
+    mqttClient.loop();
+    delay(10);
+  }
+}
+
 void mqttCallback(char *topic, byte *payload, unsigned int length)
 {
-  String t = String(topic);
   String msg;
+  msg.reserve(length + 1);
   for (unsigned int i = 0; i < length; i++)
     msg += (char)payload[i];
   Serial.printf("MQTT RX [%s]: %s\n", topic, msg.c_str());
 
-  if (t == String(topicResult))
+  if (strcmp(topic, topicResult) == 0)
   {
-    latestStatusOk = msg.indexOf("\"status\":\"sukses\"") >= 0;
+    // FIX: toleran terhadap spasi di JSON ("status": "sukses")
+    String compact = msg;
+    compact.replace(" ", "");
+    latestStatusOk = compact.indexOf("\"status\":\"sukses\"") >= 0;
     latestResultDetail = msg;
     gotResult = true;
   }
-  else if (t == String(topicMaintenance))
+  else if (strcmp(topic, topicMaintenance) == 0)
   {
     Serial.printf("MAINTENANCE: %s\n", msg.c_str());
   }
@@ -336,85 +440,147 @@ void mqttCallback(char *topic, byte *payload, unsigned int length)
 
 bool ensureMqtt()
 {
-  int tries = 0;
-  while (!mqttClient.connected() && tries < 10)
+  if (mqttClient.connected())
+    return true;
+  if (!ensureWifi())
+  {
+    Serial.println("WiFi belum tersambung, MQTT dilewati.");
+    return false;
+  }
+
+  for (int tries = 0; tries < 5 && !mqttClient.connected(); tries++)
   {
     String clientId = String("mbg-test-container-") + String((uint32_t)ESP.getEfuseMac());
-    Serial.printf("MQTT connect... rc=%d\n", mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS));
-    if (!mqttClient.connected())
-    {
+    bool ok = mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
+    // FIX: connect() mengembalikan bool; kode alasan sebenarnya ada di state()
+    Serial.printf("MQTT connect... %s (state=%d)\n", ok ? "OK" : "GAGAL", mqttClient.state());
+    if (!ok)
       delay(1000);
-      tries++;
-    }
   }
+
   if (mqttClient.connected())
   {
     mqttClient.subscribe(topicMaintenance);
     mqttClient.subscribe(topicResult);
     Serial.println("MQTT TERHUBUNG & subscribe topic.");
+    // FIX: buang pesan lama (mis. retained) yang langsung dikirim broker setelah subscribe
+    pumpMqtt(300);
+    gotResult = false;
     return true;
   }
   Serial.println("MQTT GAGAL - cek broker Railway/username");
   return false;
 }
 
+// FIX: foto dikirim per-chunk lewat beginPublish/write/endPublish.
+// Sebelumnya publish() harus memuat seluruh foto di buffer 128KB; foto UXGA
+// sering lebih besar dari itu sehingga publish diam-diam GAGAL.
+bool publishFoto(const uint8_t *buf, size_t len)
+{
+  if (!mqttClient.beginPublish(topicFoto, len, false))
+    return false;
+  size_t sent = 0;
+  while (sent < len)
+  {
+    size_t n = len - sent;
+    if (n > MQTT_CHUNK)
+      n = MQTT_CHUNK;
+    if (mqttClient.write(buf + sent, n) != n)
+    {
+      Serial.println("Tulis foto ke socket gagal - putuskan koneksi MQTT.");
+      mqttClient.disconnect(); // stream MQTT sudah rusak, harus reconnect
+      return false;
+    }
+    sent += n;
+  }
+  return mqttClient.endPublish();
+}
+
+// =====================================================================
+//  I2C scan
+// =====================================================================
+// FIX: sebelumnya memakai Wire.begin() di pin default (SDA=21, SCL=22) yang adalah pin kamera,
+// dan sama sekali tidak menyentuh bus LCD (13/14). Sekarang scan lewat bus bit-bang yang sama dengan LCD.
 void scanI2C()
 {
-  Serial.println("Scan I2C bus (via Wire default)...");
-  Wire.begin();
+  Serial.printf("Scan I2C bit-bang (SDA=%d, SCL=%d)...\n", LCD_SDA_PIN, LCD_SCL_PIN);
   int found = 0;
-  for (byte addr = 1; addr < 127; addr++)
+  for (uint8_t addr = 1; addr < 127; addr++)
   {
-    Wire.beginTransmission(addr);
-    byte err = Wire.endTransmission();
-    if (err == 0)
+    if (lcdBus.probe(addr))
     {
       Serial.printf("  Device di 0x%02X\n", addr);
       found++;
     }
   }
   if (!found)
-    Serial.println("  Tidak ditemukan.");
+    Serial.println("  Tidak ditemukan. Cek kabel SDA/SCL, VCC, dan pull-up.");
   else
     Serial.printf("  Total %d device.\n", found);
-  Wire.end();
 }
 
+// =====================================================================
+//  Full test: meta + foto -> backend -> result
+// =====================================================================
 void testPublishFoto(float beratKg)
 {
   if (!kameraAktif)
   {
-    Serial.println("Kamera tidak aktif (PSRAM?). Perintah foto dilewati.");
-    lcdBaris("Kamera di-skip", "PSRAM tidak ada");
+    Serial.println("Kamera tidak aktif (init gagal). Perintah foto dilewati.");
+    lcdBaris("Kamera di-skip", "init gagal");
     return;
   }
+  if (!ensureMqtt())
+  {
+    lcdBaris("MQTT GAGAL", "kirim dibatalkan");
+    return;
+  }
+  if (beratKg < 0)
+    beratKg = 0;
+
   gotResult = false;
   latestStatusOk = false;
+  latestResultDetail = "";
 
-  String meta = String("{\"beratKg\":") + String(beratKg, 3) + String("}");
-  Serial.printf("PUBLISH meta: %s\n", meta.c_str());
-  mqttClient.publish(topicMeta, meta.c_str(), false);
-
+  // FIX: ambil foto DULU, baru publish meta. Sebelumnya meta terkirim lebih dulu
+  // sehingga kalau foto gagal, backend menerima meta yatim tanpa foto.
+  lcdBaris("Ambil foto...", "");
   if (!capturePhoto())
   {
-    Serial.println("FOTO GAGAL sebelum publish - cek kamera.");
+    Serial.println("FOTO GAGAL - meta tidak dikirim, cek kamera.");
+    lcdBaris("Foto GAGAL", "cek kamera");
     return;
   }
 
+  String meta = String("{\"beratKg\":") + String(beratKg, 3) + String("}");
+  bool okMeta = mqttClient.publish(topicMeta, meta.c_str(), false);
+  Serial.printf("PUBLISH meta: %s -> %s\n", meta.c_str(), okMeta ? "OK" : "GAGAL");
+
   delay(100);
-  Serial.printf("FOTO: %u byte. Publish ke %s ...\n", fotoFb->len, topicFoto);
-  bool ok = mqttClient.publish(topicFoto, fotoFb->buf, fotoFb->len, false);
-  Serial.printf("Publish foto: %s\n", ok ? "OK (buffered)" : "GAGAL / fail");
+  Serial.printf("FOTO: %u byte (%ux%u). Publish ke %s ...\n",
+                (unsigned)fotoFb->len, (unsigned)fotoFb->width, (unsigned)fotoFb->height, topicFoto);
+  lcdBaris("Kirim foto...", "");
+  bool okFoto = publishFoto(fotoFb->buf, fotoFb->len);
+  Serial.printf("Publish foto: %s\n", okFoto ? "OK" : "GAGAL");
   esp_camera_fb_return(fotoFb);
   fotoFb = NULL;
 
-  resultStart = millis();
-  while (millis() - resultStart < RESULT_TIMEOUT_MS)
+  if (!okMeta || !okFoto)
   {
-    mqttClient.loop();
-    if (gotResult)
+    lcdBaris("Kirim GAGAL", "cek MQTT/WiFi");
+    return;
+  }
+
+  lcdBaris("Menunggu hasil", "Roboflow...");
+  resultStart = millis();
+  while (!gotResult && millis() - resultStart < RESULT_TIMEOUT_MS)
+  {
+    if (!mqttClient.loop()) // FIX: berhenti menunggu kalau koneksi putus
+    {
+      Serial.println("MQTT terputus saat menunggu result.");
       break;
-    delay(50);
+    }
+    delay(20);
   }
 
   if (gotResult)
@@ -440,19 +606,8 @@ void autoTest()
   Serial.println("--- AUTO TEST DIMULAI ---");
 
   lcdBaris("Menghubungkan", "WiFi ...");
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
   Serial.print("WiFi connect");
-  int t = 0;
-  while (WiFi.status() != WL_CONNECTED && t < 400)
-  {
-    delay(250);
-    Serial.print(".");
-    t++;
-  }
-  Serial.println();
-
-  if (WiFi.status() == WL_CONNECTED)
+  if (ensureWifi())
   {
     String ip = WiFi.localIP().toString();
     Serial.printf("WiFi OK, IP=%s RSSI=%d\n", ip.c_str(), WiFi.RSSI());
@@ -495,20 +650,28 @@ void autoTest()
   delay(1200);
 
   scale.set_scale(scaleFaktor);
-  float g = readLbs();
-  Serial.printf("BERAT saat ini: %.1f gram\n", g);
+  float g = 0;
+  if (readGrams(g))
+  {
+    Serial.printf("BERAT saat ini: %.1f gram\n", g);
+  }
+  else
+  {
+    g = 0; // untuk full test, jalur kamera+MQTT tetap dites dengan berat 0
+    Serial.println("HX711 gagal dibaca - test foto tetap jalan dengan berat 0 g.");
+  }
 
   if (mqttClient.connected())
   {
     if (kameraAktif)
     {
-      lcdBaris("Kirim Foto VGA", "ke Roboflow...");
+      lcdBaris("Kirim Foto", "ke Roboflow...");
       delay(800);
-      testPublishFoto(g / 1000.0);
+      testPublishFoto(g / 1000.0f);
     }
     else
     {
-      lcdBaris("Kamera di-skip", "PSRAM tidak ada");
+      lcdBaris("Kamera di-skip", "init gagal");
       Serial.println("Full test foto dilewati (kamera tidak aktif).");
       delay(1500);
     }
@@ -522,22 +685,195 @@ void autoTest()
   Serial.println("--- AUTO TEST SELESAI ---");
 }
 
+// =====================================================================
+//  Mode produksi (tombol GPIO12)
+// =====================================================================
+// FIX: sebelumnya while(true) tanpa debounce, tanpa menunggu tombol dilepas (menahan tombol = kirim berulang),
+// dan tidak bisa keluar. Sekarang dipanggil dari loop(), ada debounce, dan 'X' bisa toggle.
+void handleButton()
+{
+  if (digitalRead(BTN_PIN) != LOW)
+    return;
+  delay(BTN_DEBOUNCE_MS);
+  if (digitalRead(BTN_PIN) != LOW)
+    return; // hanya noise
+
+  float g;
+  if (readGrams(g))
+  {
+    Serial.printf("Manual trigger: kirim %.3f kg\n", g / 1000.0f);
+    testPublishFoto(g / 1000.0f);
+  }
+  else
+  {
+    Serial.println("HX711 TIDAK SIAP - pengiriman dibatalkan (cek VCC/GND/kabel).");
+    lcdBaris("HX711 tak siap", "cek kabel");
+  }
+
+  while (digitalRead(BTN_PIN) == LOW) // tunggu dilepas
+  {
+    mqttClient.loop();
+    delay(20);
+  }
+  delay(BTN_DEBOUNCE_MS);
+}
+
+// =====================================================================
+//  Perintah serial
+// =====================================================================
+void handleCommand(String cmd)
+{
+  cmd.trim();
+  if (cmd.length() == 0)
+    return;
+  char c = toupper(cmd[0]);
+  String arg = cmd.substring(1); // FIX: "S1000" dan "S 1000" sama-sama terbaca
+  arg.trim();
+
+  if (c == 'W')
+  {
+    float g;
+    if (readGrams(g))
+    {
+      Serial.printf("BERAT: %.1f gram\n", g);
+      lcdBarisString("Berat:", String(g, 1) + " g");
+    }
+    else
+    {
+      Serial.println("HX711 TIDAK SIAP - cek VCC/GND/kabel");
+      lcdBaris("HX711 tak siap", "cek VCC/GND/kabel");
+    }
+  }
+  else if (c == 'T')
+  {
+    if (scale.wait_ready_timeout(3000, 100))
+    {
+      scale.tare();
+      Serial.println("TARE OK");
+    }
+    else
+    {
+      Serial.println("HX711 TIDAK SIAP - cek VCC/GND/kabel");
+    }
+  }
+  else if (c == 'S')
+  {
+    long known = arg.toInt();
+    if (known <= 0)
+    {
+      Serial.println("Gunakan: S 1000  (tare tanpa beban dulu, lalu letakkan beban 1000 g)");
+    }
+    else if (!scale.wait_ready_timeout(3000, 100))
+    {
+      Serial.println("HX711 TIDAK SIAP - cek VCC/GND/kabel");
+    }
+    else
+    {
+      float raw = scale.get_value(10);
+      if (raw <= 0)
+      {
+        Serial.println("Raw <= 0. Pastikan sudah tare tanpa beban & beban sudah di atas timbangan. "
+                       "Kalau tetap negatif, tukar kabel sinyal load cell (A+/A-).");
+      }
+      else
+      {
+        float factor = raw / (float)known;
+        simpanKalibrasi(factor);
+        Serial.printf("Faktor baru: %.2f (raw=%.1f / %ldg)\n", factor, raw, known);
+      }
+    }
+  }
+  else if (c == 'Z')
+  {
+    Serial.printf("Faktor aktif: %.2f | tersimpan: %.2f\n", scaleFaktor, muatKalibrasi());
+  }
+  else if (c == 'B')
+  {
+    scanI2C();
+  }
+  else if (c == 'C')
+  {
+    if (capturePhoto())
+    {
+      Serial.printf("FOTO: %u byte, %ux%u\n", (unsigned)fotoFb->len,
+                    (unsigned)fotoFb->width, (unsigned)fotoFb->height);
+      esp_camera_fb_return(fotoFb);
+      fotoFb = NULL;
+    }
+    else
+    {
+      Serial.println("FOTO GAGAL.");
+    }
+  }
+  else if (c == 'M')
+  {
+    bool wifiOk = ensureWifi();
+    bool mqttOk = wifiOk && ensureMqtt();
+    Serial.printf("WiFi: %s RSSI %d | MQTT: %d\n",
+                  wifiOk ? "OK" : "GAGAL", WiFi.RSSI(), mqttOk ? 1 : 0);
+  }
+  else if (c == 'P')
+  {
+    float berat = 0.2f;
+    if (arg.length() > 0)
+      berat = arg.toFloat();
+    Serial.printf("FULL TEST: kirim berat=%.3f kg\n", berat);
+    testPublishFoto(berat); // ensureMqtt() dipanggil di dalamnya
+  }
+  else if (c == 'Y')
+  {
+    scale.set_scale(scaleFaktor);
+    float g;
+    if (readGrams(g))
+    {
+      Serial.printf("LIVE BERAT: %.2f gram -> kirim %.3f kg\n", g, g / 1000.0f);
+      testPublishFoto(g / 1000.0f);
+    }
+    else
+    {
+      Serial.println("HX711 TIDAK SIAP - test dibatalkan (cek VCC/GND/kabel).");
+    }
+  }
+  else if (c == 'X')
+  {
+    modeProduksi = !modeProduksi;
+    if (modeProduksi)
+      Serial.println("Mode produksi manual AKTIF: tekan tombol GPIO12 untuk foto & publish. Ketik X lagi untuk keluar.");
+    else
+      Serial.println("Mode produksi manual NONAKTIF.");
+  }
+  else
+  {
+    Serial.println("Perintah tidak dikenal.");
+  }
+}
+
+// =====================================================================
+//  setup / loop
+// =====================================================================
 void setup()
 {
   Serial.begin(115200);
   delay(300);
   Serial.println("\n=== ESP32-CAM FULL TEST ===");
 
+  lcdBus.begin();
+  if (!lcdBus.probe(LCD_ADDR))
+    Serial.printf("[setup] PERINGATAN: LCD tidak merespon di 0x%02X - cek kabel SDA/SCL atau alamat (perintah B).\n", LCD_ADDR);
   lcd.begin(LCD_COLS, LCD_ROWS);
-  lcd.setBacklight(HIGH);
+  lcd.setBacklight(true);
   lcdBaris("TEST MODE", "/ ESP32-CAM");
-  Serial.println("[setup] LCD OK");
+  Serial.println("[setup] LCD init selesai");
 
   scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
   scaleFaktor = muatKalibrasi();
   Serial.printf("Scale factor: %.2f\n", scaleFaktor);
   scale.set_scale(scaleFaktor);
-  Serial.println("[setup] HX711 OK");
+  // FIX: sebelumnya selalu mencetak "HX711 OK" tanpa memeriksa apa pun
+  if (scale.wait_ready_timeout(1000, 10))
+    Serial.println("[setup] HX711 OK");
+  else
+    Serial.println("[setup] HX711 TIDAK merespon - cek VCC/GND/kabel/pin");
 
   pinMode(BTN_PIN, INPUT_PULLUP);
 
@@ -546,165 +882,41 @@ void setup()
   snprintf(topicResult, sizeof(topicResult), "%s/smart-container/result", MQTT_PREFIX);
   snprintf(topicMaintenance, sizeof(topicMaintenance), "%s/maintenance", MQTT_PREFIX);
 
-  mqttClient.setBufferSize(131072);
+  initCamera();
+
+  if (!mqttClient.setBufferSize(MQTT_BUFFER))
+    Serial.println("[setup] PERINGATAN: alokasi buffer MQTT gagal");
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
+  mqttClient.setKeepAlive(30);    // FIX: default 15 dtk terlalu pendek untuk selang delay() panjang
+  mqttClient.setSocketTimeout(15);
   Serial.println("[setup] MQTT config OK");
-
-  initCamera();
 
   autoTest();
 
-  Serial.println("COMAND (ketik + Enter):");
+  Serial.println("COMMAND (ketik + Enter):");
   Serial.println("  W        -> baca berat (gram)");
   Serial.println("  T        -> tare / nol-kan");
-  Serial.println("  S <g>    -> kalibrasi: letakkan massa <g> lalu ketik S 1000");
+  Serial.println("  S <g>    -> kalibrasi: tare tanpa beban, letakkan massa <g>, ketik S 1000");
   Serial.println("  Z        -> status faktor kalibrasi");
-  Serial.println("  B        -> scan I2C (LCD)");
+  Serial.println("  B        -> scan I2C (bus LCD)");
   Serial.println("  C        -> capture foto & ukuran byte");
   Serial.println("  M        -> tes WiFi+MQTT (connect+subscribe)");
   Serial.println("  P [kg]   -> FULL TEST: publish meta+foto -> backend Roboflow -> terima result");
-  Serial.println("  Y        -> FULL TEST berat live (baca HX711 lalu P)");
-  Serial.println("  X        -> keluar/mode produksi manual");
+  Serial.println("  Y        -> FULL TEST berat live (baca HX711 lalu kirim)");
+  Serial.println("  X        -> toggle mode produksi manual (tombol GPIO12)");
 }
 
 void loop()
 {
-  String cmd;
   if (Serial.available())
   {
-    cmd = Serial.readStringUntil('\n');
-    cmd.trim();
-    char c = toupper(cmd[0]);
-
-    if (c == 'W')
-    {
-      float g = readLbs();
-      Serial.printf("BERAT: %.1f gram\n", g);
-      lcdBarisString("Berat:", String(g, 1) + " g");
-    }
-    else if (c == 'T')
-    {
-      if (scale.wait_ready_timeout(3000, 100))
-      {
-        scale.tare();
-        Serial.println("TARE OK");
-      }
-      else
-      {
-        Serial.println("HX711 TIDAK SIAP - cek VCC/GND/kabel");
-      }
-    }
-    else if (c == 'S')
-    {
-      int known = cmd.substring(2).toInt();
-      if (known <= 0)
-      {
-        Serial.println("Gunakan S 1000");
-      }
-      else
-      {
-        float raw = scale.get_value(10);
-        if (raw <= 0)
-        {
-          Serial.println("Raw=0. Cek load cell/kolibrasi, pastikan ada beban. (tare dulu?)");
-        }
-        else
-        {
-          float factor = raw / known;
-          simpanKalibrasi(factor);
-          Serial.printf("Faktor baru: %.2f (raw=%.1f / %dg)\n", factor, raw, known);
-        }
-      }
-    }
-    else if (c == 'Z')
-    {
-      float f = muatKalibrasi();
-      Serial.printf("Faktor aktif: %.2f\n", f);
-    }
-    else if (c == 'B')
-    {
-      scanI2C();
-    }
-    else if (c == 'C')
-    {
-      if (capturePhoto())
-      {
-        Serial.printf("FOTO: %u byte, WxH dibaca dari kamera.\n", fotoFb->len);
-        esp_camera_fb_return(fotoFb);
-        fotoFb = NULL;
-      }
-      else
-      {
-        Serial.println("FOTO GAGAL.");
-      }
-    }
-    else if (c == 'M')
-    {
-      if (WiFi.status() != WL_CONNECTED)
-      {
-        WiFi.disconnect();
-        WiFi.begin(WIFI_SSID, WIFI_PASS);
-      }
-      ensureMqtt();
-      Serial.printf("WiFi: %s RSSI %d | MQTT: %d\n",
-                    WiFi.isConnected() ? "OK" : "GAGAL", WiFi.RSSI(),
-                    mqttClient.connected() ? 1 : 0);
-    }
-    else if (c == 'P')
-    {
-      if (!mqttClient.connected())
-        ensureMqtt();
-      if (mqttClient.connected())
-      {
-        float berat = 0.2;
-        if (cmd.length() > 2)
-          berat = cmd.substring(2).toFloat();
-        Serial.printf("FULL TEST: kirim berat=%.3f kg\n", berat);
-        testPublishFoto(berat);
-      }
-      else
-      {
-        Serial.println("MQTT belum terhubung. Ketik M dulu.");
-      }
-    }
-    else if (c == 'Y')
-    {
-      if (!mqttClient.connected())
-        ensureMqtt();
-      if (mqttClient.connected())
-      {
-        scale.set_scale(scaleFaktor);
-        float g = readLbs();
-        Serial.printf("LIVE BERAT: %.2f gram -> kirim %.3f kg\n", g, g / 1000.0);
-        testPublishFoto(g / 1000.0);
-      }
-      else
-      {
-        Serial.println("MQTT belum terhubung. Ketik M dulu.");
-      }
-    }
-    else if (c == 'X')
-    {
-      Serial.println("Mode produksi manual: tekan tombol gpio12 untuk foto & publish.");
-      while (true)
-      {
-        if (digitalRead(BTN_PIN) == LOW)
-        {
-          if (!mqttClient.connected())
-            ensureMqtt();
-          if (mqttClient.connected())
-          {
-            float g = readLbs() / 1000.0;
-            Serial.printf("Manual trigger: kirim %.3f kg\n", g);
-            testPublishFoto(g);
-          }
-        }
-        mqttClient.loop();
-        delay(50);
-      }
-    }
+    String cmd = Serial.readStringUntil('\n');
+    handleCommand(cmd);
   }
+
+  if (modeProduksi)
+    handleButton();
 
   mqttClient.loop();
   delay(20);

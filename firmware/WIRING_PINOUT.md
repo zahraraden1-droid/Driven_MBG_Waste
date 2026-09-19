@@ -21,15 +21,25 @@ Alamat I2C default `0x27` (definisi `LCD_ADDR`, ganti ke `0x3F` jika modul memak
 
 | Modul | Pin ESP32-CAM | Fungsi |
 |-------|---------------|--------|
-| HX711 DT | GPIO 16 | Data |
+| HX711 DT | GPIO 2 | Data |
 | HX711 SCK | GPIO 15 | Clock |
 | HX711 VCC | 3.3V | Daya |
 | HX711 GND | GND | Ground |
 
-> **Catatan penting:** Spesifikasi awal menuliskan SCK ke GPIO 0. **Jangan pakai GPIO 0** karena pada
-> board AI-Thinker GPIO 0 sudah dipakai sebagai XCLK (clock kamera OV2640) sehingga akan konflik dan
-> kamera tidak aktif. Gunakan **GPIO 15** di atas. Faktor kalibrasi timbangan diatur lewat
-> `CALIBRATION_FACTOR` (gram mentah), sesuaikan dengan timbangan/acuan massa Anda.
+> **JANGAN pakai GPIO 16 untuk DT.** Pada board AI-Thinker, GPIO 16 adalah **chip-select PSRAM**.
+> Jika HX711 men-toggle GPIO 16, akses PSRAM terganggu → heap korup → crash deterministik
+> `LoadProhibited` di allocator heap (mis. saat `esp_camera_init`/WiFi). Ini akar crash yang
+> sempat muncul di kedua board.
+>
+> **JANGAN pakai GPIO 0** untuk SCK karena pada board AI-Thinker GPIO 0 sudah dipakai sebagai
+> XCLK (clock kamera OV2640) → konflik, kamera tidak aktif. Gunakan **GPIO 15** di atas.
+>
+> **Catatan GPIO 2 (strapping):** GPIO 2 dipakai HX711 DT. Kalau upload (flash) gagal karena
+> kabel DT masih terpasang, lepas kabel DT dari GPIO 2 sesaat saat upload, lalu sambungkan lagi.
+>
+> Kalibrasi: pakai sketch test (perintah `S <g>`), faktornya tersimpan di NVS/Preferences dan
+> otomatis dibaca firmware produksi saat boot. Fallback `CALIBRATION_FACTOR` jika belum pernah
+> dikalibrasi.
 >
 > **Desain saat ini:** Load Cell 1 berada di **wadah buangan** (tempat siswa membuang sisa).
 > Ompreng ditaruh di **rak terpisah** (bukan di atas load cell). Berat yang diukur = sisa yang

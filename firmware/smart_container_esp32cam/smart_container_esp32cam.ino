@@ -1,10 +1,26 @@
+/*
+ * SMART CONTAINER - ESP32-CAM (AI Thinker)
+ * HX711 (berat sisa) + LCD 16x2 bit-bang + kamera + MQTT (Railway) -> backend Roboflow
+ *
+ * FIX dari versi lama (disinkronkan dari sketch test yang sudah terbukti jalan):
+ * - HX711 DT pindah dari GPIO16 -> GPIO2. GPIO16 pada AI-Thinker ESP32-CAM adalah
+ *   chip-select PSRAM; jika di-ground/di-drive oleh HX711, akses PSRAM terganggu,
+ *   heap korup -> crash LoadProhibited di allocator (cam_dma_config / wifi_calloc).
+ * - LCD pakai I2C bit-bang (GPIO13/14), bukan Wire default -> bebas konflik bus SCCB kamera.
+ * - Foto dikirim per-chunk (beginPublish/write/endPublish), tidak lagi publish(buf,len)
+ *   yang butuh buffer besar dan bisa gagal diam-diam.
+ * - initCamera punya fallback DRAM (1 buffer) kalau PSRAM tidak ada.
+ * - WiFi/MQTT bisa reconnect; MQTT subscribe topic result + maintenance.
+ * - Faktor kalibrasi dibaca dari NVS (disimpan sketch test), fallback CALIBRATION_FACTOR.
+ */
+
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <PubSubClient.h>
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
 #include <HX711.h>
+#include <Preferences.h>
 
+// ---------------- Pin kamera (AI Thinker ESP32-CAM) ----------------
 #define PWDN_GPIO_NUM 32
 #define RESET_GPIO_NUM -1
 #define XCLK_GPIO_NUM 0
@@ -22,32 +38,207 @@
 #define HREF_GPIO_NUM 23
 #define PCLK_GPIO_NUM 22
 
+// ---------------- Pin & konfigurasi periferal ----------------
 #define LCD_ADDR 0x27
 #define LCD_COLS 16
 #define LCD_ROWS 2
 #define LCD_SDA_PIN 13
 #define LCD_SCL_PIN 14
-#define HX711_DT_PIN 16
+#define HX711_DT_PIN 2  // FIX: bukan GPIO16! GPIO16 = CS PSRAM di ESP32-CAM.
 #define HX711_SCK_PIN 15
-#define BTN_PIN 12
-#define BTN_DEBOUNCE_MS 50
+#define BTN_PIN 12  // tombol ke GND (aman untuk strapping pin GPIO12)
 #define CALIBRATION_FACTOR 450.0
+
+// ---------------- Parameter perilaku ----------------
 #define DUMP_DELTA_KG 0.02
 #define STABLE_MS 1500
 #define RESULT_TIMEOUT_MS 15000
+#define WIFI_TIMEOUT_MS 30000
+#define HX711_TIMEOUT_MS 1000
+#define BTN_DEBOUNCE_MS 50
+#define MQTT_BUFFER 4096  // cukup karena foto dikirim per-chunk; result JSON kecil
+#define MQTT_CHUNK 1024
 
-const char* WIFI_SSID = "R-401";
-const char* WIFI_PASS = "*ruang401";
+const char *WIFI_SSID = "R-401";
+const char *WIFI_PASS = "*ruang401";
 // PRODUCTION: broker MQTT di Railway via TCP proxy tambahan (bukan domain HTTP).
-const char* MQTT_SERVER = "tramway.proxy.rlwy.net";
+const char *MQTT_SERVER = "tramway.proxy.rlwy.net";
 const uint16_t MQTT_PORT = 55251;
-const char* MQTT_USER = "mbg_device";
-const char* MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
-const char* MQTT_PREFIX = "mbg";
+const char *MQTT_USER = "mbg_device";
+const char *MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
+const char *MQTT_PREFIX = "mbg";
 
-LiquidCrystal_I2C lcd(LCD_ADDR, LCD_COLS, LCD_ROWS);
+// =====================================================================
+//  I2C bit-bang (dipakai karena pin default Wire bentrok dengan SCCB kamera)
+// =====================================================================
+class BitBangI2C
+{
+public:
+  BitBangI2C(uint8_t sda, uint8_t scl) : _sda(sda), _scl(scl) {}
+  void begin()
+  {
+    pinMode(_sda, OUTPUT);
+    pinMode(_scl, OUTPUT);
+    digitalWrite(_sda, HIGH);
+    digitalWrite(_scl, HIGH);
+  }
+  bool start()
+  {
+    digitalWrite(_sda, HIGH);
+    digitalWrite(_scl, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(_sda, LOW);
+    delayMicroseconds(5);
+    digitalWrite(_scl, LOW);
+    return true;
+  }
+  void stop()
+  {
+    digitalWrite(_sda, LOW);
+    digitalWrite(_scl, HIGH);
+    delayMicroseconds(5);
+    digitalWrite(_sda, HIGH);
+    delayMicroseconds(5);
+  }
+  bool writeByte(uint8_t data)
+  {
+    for (int i = 7; i >= 0; i--)
+    {
+      digitalWrite(_sda, (data >> i) & 1);
+      delayMicroseconds(3);
+      digitalWrite(_scl, HIGH);
+      delayMicroseconds(5);
+      digitalWrite(_scl, LOW);
+      delayMicroseconds(2);
+    }
+    pinMode(_sda, INPUT);
+    digitalWrite(_sda, HIGH);
+    delayMicroseconds(3);
+    digitalWrite(_scl, HIGH);
+    delayMicroseconds(5);
+    bool ack = digitalRead(_sda) == LOW;
+    digitalWrite(_scl, LOW);
+    digitalWrite(_sda, HIGH);
+    pinMode(_sda, OUTPUT);
+    digitalWrite(_sda, HIGH);
+    delayMicroseconds(2);
+    return ack;
+  }
+  void beginTransmission(uint8_t addr)
+  {
+    start();
+    writeByte(addr << 1);
+  }
+  void write(uint8_t data) { writeByte(data); }
+  void endTransmission() { stop(); }
+
+  bool probe(uint8_t addr)
+  {
+    start();
+    bool ack = writeByte(addr << 1);
+    stop();
+    return ack;
+  }
+
+private:
+  uint8_t _sda;
+  uint8_t _scl;
+};
+
+class PCF8574LCD : public Print
+{
+public:
+  using Print::write;
+
+  PCF8574LCD(uint8_t addr, BitBangI2C *bus)
+      : _addr(addr), _cols(16), _rows(2), _backlight(0x08), _bus(bus) {}
+
+  void begin(uint8_t cols, uint8_t rows)
+  {
+    _cols = cols;
+    _rows = rows;
+    _bus->begin();
+    delay(50);
+    writeNibble(0x03, false);
+    delayMicroseconds(4500);
+    writeNibble(0x03, false);
+    delayMicroseconds(4500);
+    writeNibble(0x03, false);
+    delayMicroseconds(150);
+    writeNibble(0x02, false);
+    command(0x28);
+    command(0x0C);
+    command(0x06);
+    command(0x01);
+    delay(2);
+  }
+  void setBacklight(uint8_t on)
+  {
+    _backlight = (on ? 0x08 : 0x00);
+    expanderWrite(0);
+  }
+  void setCursor(uint8_t col, uint8_t row) { command(0x80 | (row == 0 ? 0x00 : 0x40) | col); }
+  virtual size_t write(uint8_t c)
+  {
+    writeByte(c, true);
+    return 1;
+  }
+  void command(uint8_t value) { writeByte(value, false); }
+  void clear()
+  {
+    command(0x01);
+    delay(2);
+  }
+
+  void printLine(uint8_t row, const char *text)
+  {
+    setCursor(0, row);
+    uint8_t i = 0;
+    for (; text[i] && i < _cols; i++)
+      write((uint8_t)text[i]);
+    for (; i < _cols; i++)
+      write((uint8_t)' ');
+  }
+
+private:
+  void expanderWrite(uint8_t data)
+  {
+    _bus->beginTransmission(_addr);
+    _bus->write(data | _backlight);
+    _bus->endTransmission();
+  }
+  void pulseEnable(uint8_t data)
+  {
+    expanderWrite(data | 0x04);
+    delayMicroseconds(1);
+    expanderWrite(data & ~0x04);
+    delayMicroseconds(50);
+  }
+  void writeNibble(uint8_t nibble, bool rs)
+  {
+    uint8_t out = (nibble & 0x0F) << 4;
+    if (rs)
+      out |= 0x01;
+    pulseEnable(out);
+  }
+  void writeByte(uint8_t value, bool rs)
+  {
+    writeNibble(value >> 4, rs);
+    writeNibble(value & 0x0F, rs);
+  }
+  uint8_t _addr;
+  uint8_t _cols;
+  uint8_t _rows;
+  uint8_t _backlight;
+  BitBangI2C *_bus;
+};
+
+// =====================================================================
+//  Global
+// =====================================================================
+BitBangI2C lcdBus(LCD_SDA_PIN, LCD_SCL_PIN);
+PCF8574LCD lcd(LCD_ADDR, &lcdBus);
 HX711 scale;
-
 WiFiClient wifiClient;
 PubSubClient mqttClient(wifiClient);
 
@@ -55,6 +246,9 @@ char topicMeta[128];
 char topicFoto[128];
 char topicResult[128];
 char topicMaintenance[64];
+
+Preferences prefs;
+float scaleFaktor = CALIBRATION_FACTOR;
 
 enum State { STATE_IDLE, STATE_CAPTURE, STATE_DUMP, STATE_WEIGH_UPLOAD, STATE_DONE };
 State state = STATE_IDLE;
@@ -69,9 +263,59 @@ bool uploadOk = false;
 bool gotResult = false;
 bool sentData = false;
 bool maintenanceAktif = false;
-camera_fb_t* fotoFb = NULL;
+camera_fb_t *fotoFb = NULL;
 
-void initCamera() {
+// =====================================================================
+//  LCD helper
+// =====================================================================
+void lcdBaris(const char *atas, const char *bawah)
+{
+  lcd.printLine(0, atas);
+  lcd.printLine(1, bawah);
+}
+
+// =====================================================================
+//  Timbangan (dengan timeout & flag sukses, tidak pernah menggantung)
+// =====================================================================
+bool readKg(float &kg)
+{
+  if (!scale.wait_ready_timeout(HX711_TIMEOUT_MS, 10))
+    return false;
+  float v = scale.get_units(5); // rata-rata 5 sampel
+  if (isnan(v) || isinf(v) || fabsf(v) > 1000000.0f)
+    return false;
+  kg = v / 1000.0f;
+  return true;
+}
+
+void simpanKalibrasi(float factor)
+{
+  prefs.begin("sppg", false);
+  prefs.putFloat("SCALE_FACTOR", factor);
+  prefs.end();
+  scaleFaktor = factor;
+  scale.set_scale(scaleFaktor);
+}
+
+float muatKalibrasi()
+{
+  prefs.begin("sppg", false);
+  float factor = prefs.getFloat("SCALE_FACTOR", 0);
+  prefs.end();
+  return factor > 0 ? factor : CALIBRATION_FACTOR;
+}
+
+// =====================================================================
+//  Kamera
+// =====================================================================
+void initCamera()
+{
+  bool psram = psramFound();
+  if (psram)
+    Serial.println("[camera] PSRAM OK.");
+  else
+    Serial.println("[camera] PSRAM TIDAK ADA -> mode DRAM (1 buffer). Aktifkan Tools->PSRAM di Arduino IDE untuk performa terbaik.");
+
   camera_config_t config = {0};
   config.ledc_channel = LEDC_CHANNEL_0;
   config.ledc_timer = LEDC_TIMER_0;
@@ -95,68 +339,188 @@ void initCamera() {
   config.pixel_format = PIXFORMAT_JPEG;
   config.frame_size = FRAMESIZE_VGA;
   config.jpeg_quality = 12;
-  config.fb_count = 1;
-  config.fb_location = CAMERA_FB_IN_PSRAM;
-  config.grab_mode = CAMERA_GRAB_LATEST;
 
-  esp_camera_init(&config);
+  if (psram)
+  {
+    config.jpeg_quality = 10;
+    config.fb_count = 2;
+    config.fb_location = CAMERA_FB_IN_PSRAM;
+    config.grab_mode = CAMERA_GRAB_LATEST;
+  }
+  else
+  {
+    config.fb_count = 1;
+    config.fb_location = CAMERA_FB_IN_DRAM;
+    config.grab_mode = CAMERA_GRAB_WHEN_EMPTY;
+  }
+
+  esp_err_t res = esp_camera_init(&config);
+  if (res != ESP_OK)
+  {
+    Serial.printf("KAMERA GAGAL INIT: 0x%x\n", res);
+    return;
+  }
+
+  // hangatkan auto-exposure beberapa frame pertama
+  for (int i = 0; i < 3; i++)
+  {
+    camera_fb_t *warm = esp_camera_fb_get();
+    if (warm)
+      esp_camera_fb_return(warm);
+    delay(100);
+  }
+  Serial.println("Kamera OK.");
 }
 
-bool capturePhoto() {
+bool capturePhoto()
+{
+  if (fotoFb)
+  {
+    esp_camera_fb_return(fotoFb);
+    fotoFb = NULL;
+  }
+  camera_fb_t *stale = esp_camera_fb_get(); // buang frame lama -> foto = kondisi terkini
+  if (stale)
+    esp_camera_fb_return(stale);
   fotoFb = esp_camera_fb_get();
   return fotoFb != NULL;
 }
 
-float readFilteredKg() {
-  scale.set_scale(CALIBRATION_FACTOR);
-  float gram = scale.get_units(5);
-  if (isnan(gram) || gram < 0) gram = 0;
-  return gram / 1000.0;
+// =====================================================================
+//  WiFi & MQTT
+// =====================================================================
+bool ensureWifi(uint32_t timeoutMs = WIFI_TIMEOUT_MS)
+{
+  if (WiFi.status() == WL_CONNECTED)
+    return true;
+  WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
+  WiFi.setAutoReconnect(true);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  uint32_t t0 = millis();
+  while (WiFi.status() != WL_CONNECTED && millis() - t0 < timeoutMs)
+  {
+    delay(250);
+  }
+  return WiFi.status() == WL_CONNECTED;
 }
 
-void lcdBaris(const char* atas, const char* bawah) {
-  lcd.setCursor(0, 0);
-  lcd.print(atas);
-  lcd.print("                ");
-  lcd.setCursor(0, 1);
-  lcd.print(bawah);
-  lcd.print("                ");
+void pumpMqtt(uint32_t ms)
+{
+  uint32_t t0 = millis();
+  while (millis() - t0 < ms)
+  {
+    mqttClient.loop();
+    delay(10);
+  }
 }
 
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  String t = String(topic);
+void mqttCallback(char *topic, byte *payload, unsigned int length)
+{
   String msg;
-  for (unsigned int i = 0; i < length; i++) {
+  msg.reserve(length + 1);
+  for (unsigned int i = 0; i < length; i++)
     msg += (char)payload[i];
-  }
 
-  if (t == String(topicResult)) {
+  if (strcmp(topic, topicResult) == 0)
+  {
+    String compact = msg;
+    compact.replace(" ", "");
+    uploadOk = compact.indexOf("\"status\":\"sukses\"") >= 0;
     gotResult = true;
-    uploadOk = msg.indexOf("\"status\":\"sukses\"") >= 0;
-  } else if (t == String(topicMaintenance)) {
-    maintenanceAktif = msg.indexOf("\"aktif\":true") >= 0;
+  }
+  else if (strcmp(topic, topicMaintenance) == 0)
+  {
+    String compact = msg;
+    compact.replace(" ", "");
+    maintenanceAktif = compact.indexOf("\"aktif\":true") >= 0;
   }
 }
 
-void publishWaste() {
+bool ensureMqtt()
+{
+  if (mqttClient.connected())
+    return true;
+  if (!ensureWifi())
+    return false;
+
+  for (int tries = 0; tries < 5 && !mqttClient.connected(); tries++)
+  {
+    String clientId = String("mbg-container-") + String((uint32_t)ESP.getEfuseMac());
+    bool ok = mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
+    if (!ok)
+      delay(1000);
+  }
+
+  if (mqttClient.connected())
+  {
+    mqttClient.subscribe(topicMaintenance);
+    mqttClient.subscribe(topicResult);
+    pumpMqtt(300); // buang pesan lama (retained) yang langsung dikirim broker
+    return true;
+  }
+  return false;
+}
+
+// Foto dikirim per-chunk supaya tidak butuh buffer besar dan tidak gagal diam-diam.
+bool publishFoto(const uint8_t *buf, size_t len)
+{
+  if (!mqttClient.beginPublish(topicFoto, len, false))
+    return false;
+  size_t sent = 0;
+  while (sent < len)
+  {
+    size_t n = len - sent;
+    if (n > MQTT_CHUNK)
+      n = MQTT_CHUNK;
+    if (mqttClient.write(buf + sent, n) != n)
+    {
+      mqttClient.disconnect();
+      return false;
+    }
+    sent += n;
+  }
+  return mqttClient.endPublish();
+}
+
+void publishWaste()
+{
   String meta = String("{\"beratKg\":") + String(sampleKg, 3) + String("}");
-  mqttClient.publish(topicMeta, meta.c_str(), false);
+  bool okMeta = mqttClient.publish(topicMeta, meta.c_str(), false);
 
-  if (fotoFb) {
-    mqttClient.publish(topicFoto, fotoFb->buf, fotoFb->len, false);
+  bool okFoto = false;
+  if (fotoFb)
+    okFoto = publishFoto(fotoFb->buf, fotoFb->len);
+
+  if (!okMeta || !okFoto)
+  {
+    gotResult = true;
+    uploadOk = false;
   }
 }
 
-void setup() {
+// =====================================================================
+//  Setup / loop
+// =====================================================================
+void setup()
+{
   Serial.begin(115200);
+  delay(300);
 
-  Wire.begin(LCD_SDA_PIN, LCD_SCL_PIN);
-  lcd.init();
-  lcd.backlight();
+  lcdBus.begin();
+  if (!lcdBus.probe(LCD_ADDR))
+    Serial.printf("[setup] PERINGATAN: LCD tidak merespon di 0x%02X - cek kabel SDA/SCL atau alamat.\n", LCD_ADDR);
+  lcd.begin(LCD_COLS, LCD_ROWS);
+  lcd.setBacklight(true);
+  lcdBaris("Smart Container", "/ Memuat...");
 
   scale.begin(HX711_DT_PIN, HX711_SCK_PIN);
-  scale.set_scale(CALIBRATION_FACTOR);
-  scale.tare();
+  scaleFaktor = muatKalibrasi();
+  scale.set_scale(scaleFaktor);
+  if (scale.wait_ready_timeout(1000, 10))
+    scale.tare();
+  else
+    Serial.println("[setup] HX711 TIDAK merespon - cek VCC/GND/kabel/pin");
 
   pinMode(BTN_PIN, INPUT_PULLUP);
 
@@ -165,15 +529,15 @@ void setup() {
   snprintf(topicResult, sizeof(topicResult), "%s/smart-container/result", MQTT_PREFIX);
   snprintf(topicMaintenance, sizeof(topicMaintenance), "%s/maintenance", MQTT_PREFIX);
 
-  mqttClient.setBufferSize(131072);
+  if (!mqttClient.setBufferSize(MQTT_BUFFER))
+    Serial.println("[setup] PERINGATAN: alokasi buffer MQTT gagal");
   mqttClient.setServer(MQTT_SERVER, MQTT_PORT);
   mqttClient.setCallback(mqttCallback);
+  mqttClient.setKeepAlive(30);
+  mqttClient.setSocketTimeout(15);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-  }
+  ensureWifi();
+  ensureMqtt();
 
   initCamera();
 
@@ -181,18 +545,19 @@ void setup() {
   state = STATE_IDLE;
 }
 
-void loop() {
-  float w = readFilteredKg();
+void loop()
+{
+  float w = 0;
+  readKg(w);
   unsigned long now = millis();
 
-  if (WiFi.status() != WL_CONNECTED) {
+  if (WiFi.status() != WL_CONNECTED)
     WiFi.begin(WIFI_SSID, WIFI_PASS);
-  }
 
-  if (!mqttClient.connected() && now - lastMqttAttempt > 5000) {
+  if (!mqttClient.connected() && now - lastMqttAttempt > 5000)
+  {
     lastMqttAttempt = now;
-    String clientId = String("mbg-container-") + String((uint32_t)ESP.getEfuseMac());
-    mqttClient.connect(clientId.c_str(), MQTT_USER, MQTT_PASS);
+    ensureMqtt();
   }
   mqttClient.loop();
 
@@ -206,7 +571,7 @@ void loop() {
             lastStable = 0;
           } else {
             btnPerluRelease = true;
-            tareKg = readFilteredKg();
+            tareKg = w;
             lastStable = 0;
             lcdBaris("Sedang Memfoto", "/ Model v1");
             stateStart = now;
