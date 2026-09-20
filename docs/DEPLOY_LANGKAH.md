@@ -32,13 +32,17 @@ Dari Supabase dashboard catat 3 nilai ini (masih akan dipakai di beberapa fase):
 4. Cek tabel: menu **Table Editor** → harus terlihat `users`, `maggot_batches`,
    `sensor_readings`, `waste_records`, dst.
 
-**Hasil:** akun login awal:
+**Hasil:** akun login awal (dibuat oleh `seed_prod_users.sql`):
 ```
-superadmin@sekolah.id / SppgMbg@2026!
-admin@sekolah.id     / SppgMbg@2026!
-dapur@sekolah.id     / SppgMbg@2026!
+superadmin@sekolah.id
+admin@sekolah.id
+dapur@sekolah.id
 ```
-> Ganti password segera setelah semua berjalan (hash bcrypt di tabel `users`).
+> **PENTING — KEAMANAN:** kata sandi awal dari `seed_prod_users.sql` adalah kata sandi
+> yang **dipublikasikan di dokumentasi repositori**, sehingga harus dianggap
+> **BOCOR**. Ganti kata sandi seluruh akun ini sebelum sistem dipakai menampung
+> data nyata, dan jangan pernah menuliskan kata sandi produksi di dokumen
+> yang di-commit. Lihat `docs/AUDIT_PRODUCTION_READINESS.md`.
 
 **Verifikasi:** di SQL Editor jalankan `select * from users;` → 3 baris muncul, tanpa error RLS.
 

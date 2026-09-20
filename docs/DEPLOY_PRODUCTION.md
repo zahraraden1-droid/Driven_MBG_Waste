@@ -57,7 +57,12 @@ Jalankan di **SQL editor Supabase** secara berurutan:
 
 Pastikan Storage bucket `menu-foto` **Public ON** (Storage → menu-foto → Edit → Public bucket).
 
-Akun default setelah seed: `superadmin@sekolah.id / SppgMbg@2026!` (dan `admin@sekolah.id`, `dapur@sekolah.id`). **Segera ganti setelah login pertama.**
+Akun default setelah seed: `superadmin@sekolah.id`, `admin@sekolah.id`, `dapur@sekolah.id` (kata sandi awal ada di `seed_prod_users.sql`).
+
+> **PENTING — KEAMANAN:** kata sandi awal pada `seed_prod_users.sql` sudah dipublikasikan
+> di dokumentasi repositori ini, sehingga harus dianggap **BOCOR**. Ganti kata sandi
+> seluruh akun tersebut sebelum sistem menyimpan data nyata. Jangan menuliskan
+> kata sandi produksi di dokumen yang di-commit.
 
 ---
 

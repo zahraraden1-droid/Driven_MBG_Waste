@@ -144,12 +144,14 @@ mosquitto_pub -h <broker> -t 'mbg/maggot-chamber' -m '{"suhuBilikC":28,"kelembab
 
 **C. REST fallback**
 ```bash
+# Ganti $DEVICE_API_KEY dengan nilai dari backend/.env (jangan tulis kunci asli di dokumen ini).
 curl -X POST http://localhost:4000/api/iot/maggot-chamber \
-  -H 'x-device-api-key: sppg-mbg-iot-secure-key-2026' \
+  -H "x-device-api-key: $DEVICE_API_KEY" \
   -H 'Content-Type: application/json' \
   -d '{"suhuBilikC":28,"kadarAmoniaPpm":12}'
 ```
 - [ ] Endpoint REST merespons JSON `{aman, rekomendasi, tersimpan}`.
+- [ ] Payload dengan seluruh field sensor `null` **tidak** tersimpan (`tersimpan:false`), sesuai validasi `processChamber`.
 
 **D. Mode pemeliharaan**
 - [ ] Toggle di dashboard admin (`/admin-sekolah`) → ESC8266 berhenti mengirim; toggle off → lanjut.
