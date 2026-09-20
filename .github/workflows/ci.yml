@@ -1,0 +1,149 @@
+# SPPG MBG — CI
+#
+# Tujuan:
+#   1. Menjalankan test backend (perilaku rumus berat, label minggu, validasi telemetri).
+#   2. Menjalankan audit dependensi (npm audit) untuk backend dan frontend.
+#   3. Memastikan frontend dapat di-build (karena di-deploy ke Vercel).
+#
+# Sebelumnya repositori ini TIDAK memiliki CI sama sekali, sehingga regresi
+# hanya terdeteksi setelah deploy. Workflow ini adalah pengaman minimum.
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test-backend:
+    name: Test backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint (blokir hanya bila ada ERROR)
+        run: npm run lint
+
+      - name: Jalankan test
+        # MQTT dimatikan dan tidak ada kredensial: test hanya menyentuh fungsi murni.
+        run: npm test
+        env:
+          NODE_ENV: test
+          MQTT_URL: ''
+          DEMO_MODE: 'true'
+
+      - name: Cek format (lapor saja, belum memblokir)
+        # Sebagian berkas lama belum memenuhi gaya Prettier. Langkah ini disengaja
+        # TIDAK memblokir agar reformat dapat dilakukan sebagai perubahan tersendiri.
+        run: npm run format:check
+        continue-on-error: true
+
+      - name: Audit dependensi backend
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  build-frontend:
+    name: Build frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # frontend adalah git submodule; tanpa ini direktorinya kosong.
+          submodules: recursive
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit dependensi frontend
+        # Sejak upgrade ke next@15.5.24 (React 19), kerentanan critical sudah 0.
+        # Sisa 1 high berasal dari postcss@8.4.31 yang dibundel DI DALAM Next.js;
+        # PostCSS hanya dipakai saat build (devDependency) dan tidak pernah ada
+        # di runtime browser. Langkah ini melaporkan tanpa menggagalkan pipeline.
+        run: npm audit --audit-level=critical
+        continue-on-error: true
+
+      - name: Build
+        run: npm run build
+        env:
+          # Nilai dummy: build tidak boleh bergantung pada kredensial produksi.
+          NEXT_PUBLIC_API_URL: http://localhost:4000/api
+          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: dummy
+
+  test-ai-service:
+    name: Test AI service
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai_service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Pasang dependensi
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install httpx
+
+      - name: Test logika autentikasi (tanpa FastAPI)
+        run: python3 test_auth.py
+
+      - name: Test integrasi autentikasi lewat HTTP
+        # Memuat aplikasi FastAPI sungguhan dan mengirim permintaan lewat TestClient.
+        # Sebelum perbaikan, seluruh endpoint layanan ini terbuka tanpa autentikasi.
+        run: python3 test_integrasi_auth.py
+
+  audit-iot-praktik-keamanan:
+    name: Cek praktik keamanan repo
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Tolak kredensial yang ter-commit kembali
+        run: |
+          set -e
+          echo "Memeriksa pola kredensial yang pernah bocor di repositori ini..."
+          # Literal sengaja dipecah agar file workflow ini tidak mendeteksi dirinya sendiri.
+          P1='5vfa4wltLH3v30B2WqlU'; P2='Tp'
+          P3='SppgMbg'; P4='@2026'
+          P5='sppg-mbg-iot-secure'; P6='-key-2026'
+          P7='ruang4'; P8='08'
+          # Hash bcrypt akun produksi yang bocor lewat supabase/seed_prod_users.sql
+          # (masih ada di riwayat git; wajib dirotasi, bukan sekadar dihapus).
+          P9='GdNnZaQBfojDli9K4q4luO'
+          POLA="${P1}${P2}|${P3}${P4}|${P5}${P6}|${P7}${P8}|${P9}"
+          if grep -rnE "$POLA" \
+              --include='*.md' --include='*.js' --include='*.ino' \
+              --include='*.json' --include='*.example' --include='*.yml' \
+              --exclude-dir=node_modules --exclude-dir=.next . ; then
+            echo ""
+            echo "GAGAL: ditemukan kredensial yang telah dianggap bocor di dalam repositori."
+            echo "Hapus nilainya dan pindahkan ke .env / secrets.h (keduanya ter-gitignore)."
+            exit 1
+          fi
+          echo "OK: tidak ditemukan kredensial bocor."

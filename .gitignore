@@ -1,9 +1,30 @@
+# Dependensi
 node_modules
+
+# Build output
 .next
-.env
-.env.local
 dist
 build
+
+# --- RAHASIA: JANGAN pernah di-commit ---
+.env
 .env.local
-deploy/mosquitto/passwd
+.env.*.local
 ENV_VARIABLES.txt
+
+# Kredensial firmware. Salinan ada di tiap folder sketch agar sketch dapat
+# dikompilasi sendirian di Arduino IDE; semuanya TIDAK di-commit.
+# Template yang boleh di-commit: firmware/secrets.h.example
+secrets.h
+firmware/*/secrets.h
+
+# Password broker MQTT yang digenerate
+deploy/mosquitto/passwd
+
+# Hasil pengukuran/audit lokal (berisi data produksi; jangan di-commit)
+tools/audit/hasil/
+tools/benchmark/hasil/
+
+# Python
+__pycache__/
+*.pyc
