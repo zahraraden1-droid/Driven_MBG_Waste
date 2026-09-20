@@ -49,13 +49,32 @@
 #define MQTT_BUFFER 4096              // FIX: cukup untuk header + pesan result; foto dikirim per-chunk
 #define MQTT_CHUNK 1024
 
-const char *WIFI_SSID = "R-408";
-const char *WIFI_PASS = "*ruang408";
-const char *MQTT_SERVER = "tramway.proxy.rlwy.net";
-const uint16_t MQTT_PORT = 55251;
-const char *MQTT_USER = "mbg_device";
-const char *MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
-const char *MQTT_PREFIX = "mbg";
+// ---------------------------------------------------------------------------
+// Kredensial dibaca dari `secrets.h` di folder sketch ini.
+//
+// File `secrets.h` SENGAJA tidak di-commit (lihat .gitignore) supaya kredensial
+// tidak pernah tersimpan di repositori. Untuk menyiapkannya:
+//
+//     cp firmware/secrets.h.example firmware/<folder-sketch>/secrets.h
+//
+// lalu isi nilai sebenarnya. Bila file itu belum ada, kompilasi akan GAGAL
+// dengan pesan yang menjelaskan langkah di atas — ini disengaja agar kredensial
+// tidak diam-diam kembali memakai nilai default yang salah.
+// ---------------------------------------------------------------------------
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#error "secrets.h belum ada di folder sketch ini. Jalankan: cp firmware/secrets.h.example firmware/<folder-sketch>/secrets.h lalu isi nilainya."
+#endif
+
+const char *WIFI_SSID = SECRET_WIFI_SSID;
+const char *WIFI_PASS = SECRET_WIFI_PASS;
+// Broker MQTT diakses lewat TCP proxy (bukan domain HTTP).
+const char *MQTT_SERVER = SECRET_MQTT_SERVER;
+const uint16_t MQTT_PORT = SECRET_MQTT_PORT;
+const char *MQTT_USER = SECRET_MQTT_USER;
+const char *MQTT_PASS = SECRET_MQTT_PASS;
+const char *MQTT_PREFIX = SECRET_MQTT_PREFIX;
 
 // =====================================================================
 //  I2C bit-bang (dipakai karena pin default Wire bentrok dengan kamera)

@@ -151,14 +151,26 @@ mengirim data ke broker MQTT. Backend Express berlangganan ke topic-topic beriku
 
 ### 4.1 Broker untuk production
 
-- **Production saat ini (Railway):** broker Mosquitto dibuild dari `deploy/mosquitto`, terhubung
-  lewat TCP proxy Railway. Di firmware pakai:
-  `MQTT_SERVER="tramway.proxy.rlwy.net"`, `MQTT_PORT=55251`, `MQTT_USER="mbg_device"`,
-  `MQTT_PASS="5vfa4wltLH3v30B2WqlUlTp"` (nilai sama dengan env `MQTT_*` di service mosquitto & backend).
-  > Jangan pakai domain `mosquitto-ae86.up.railway.app:1883` — domain HTTP Railway TIDAK meneruskan TCP.
+> **KEAMANAN — JANGAN menuliskan kredensial di dokumen ini.**
+> Dokumen ini di-commit ke repositori. Kredensial MQTT (host, user, password) dan
+> kredensial WiFi TIDAK BOLEH ditulis di sini. Nilai nyata disimpan di
+> `firmware/secrets.h` (ter-gitignore; contoh tersedia di `firmware/secrets.h.example`)
+> dan di variabel lingkungan Railway/VPS.
+>
+> Kredensial yang sebelumnya tercatat di dokumen ini sudah **dianggap bocor** dan
+> wajib dirotasi. Lihat `docs/AUDIT_PRODUCTION_READINESS.md` bagian kredensial.
+
+- **Production saat ini:** broker Mosquitto dibangun dari `deploy/mosquitto`, terhubung
+  lewat TCP proxy. Di firmware, isi `MQTT_SERVER`, `MQTT_PORT`, `MQTT_USER`, dan
+  `MQTT_PASS` **melalui `secrets.h`**, memakai nilai yang sama dengan env `MQTT_*`
+  pada service mosquitto dan backend.
+  > Jangan pakai domain HTTP penyedia hosting — domain HTTP TIDAK meneruskan TCP.
 - **Lokal (uji coba):** jalankan Mosquitto di laptop atau pakai broker publik seperti `broker.emqx.io:1883`.
 - Keamanan perangkat dikendalikan oleh kredensial MQTT tiap perangkat; `DEVICE_API_KEY` tetap dipakai
   untuk fallback endpoint REST (`/api/iot/*`) yang masih tersedia untuk pengujian lewat curl.
+  > **Catatan status:** saat ini broker belum memakai `acl_file`, sehingga satu kredensial
+  > dapat mengakses topik perintah semua perangkat. Ini tercatat sebagai temuan keamanan
+  > berprioritas tinggi beserta rencana perbaikannya.
 
 ### 4.2 Skema topic
 

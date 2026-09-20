@@ -59,14 +59,32 @@
 #define MQTT_BUFFER 4096  // cukup karena foto dikirim per-chunk; result JSON kecil
 #define MQTT_CHUNK 1024
 
-const char *WIFI_SSID = "R-401";
-const char *WIFI_PASS = "*ruang401";
-// PRODUCTION: broker MQTT di Railway via TCP proxy tambahan (bukan domain HTTP).
-const char *MQTT_SERVER = "tramway.proxy.rlwy.net";
-const uint16_t MQTT_PORT = 55251;
-const char *MQTT_USER = "mbg_device";
-const char *MQTT_PASS = "5vfa4wltLH3v30B2WqlUlTp";
-const char *MQTT_PREFIX = "mbg";
+// ---------------------------------------------------------------------------
+// Kredensial dibaca dari `secrets.h` di folder sketch ini.
+//
+// File `secrets.h` SENGAJA tidak di-commit (lihat .gitignore) supaya kredensial
+// tidak pernah tersimpan di repositori. Untuk menyiapkannya:
+//
+//     cp firmware/secrets.h.example firmware/<folder-sketch>/secrets.h
+//
+// lalu isi nilai sebenarnya. Bila file itu belum ada, kompilasi akan GAGAL
+// dengan pesan yang menjelaskan langkah di atas — ini disengaja agar kredensial
+// tidak diam-diam kembali memakai nilai default yang salah.
+// ---------------------------------------------------------------------------
+#if __has_include("secrets.h")
+#include "secrets.h"
+#else
+#error "secrets.h belum ada di folder sketch ini. Jalankan: cp firmware/secrets.h.example firmware/<folder-sketch>/secrets.h lalu isi nilainya."
+#endif
+
+const char *WIFI_SSID = SECRET_WIFI_SSID;
+const char *WIFI_PASS = SECRET_WIFI_PASS;
+// Broker MQTT diakses lewat TCP proxy (bukan domain HTTP).
+const char *MQTT_SERVER = SECRET_MQTT_SERVER;
+const uint16_t MQTT_PORT = SECRET_MQTT_PORT;
+const char *MQTT_USER = SECRET_MQTT_USER;
+const char *MQTT_PASS = SECRET_MQTT_PASS;
+const char *MQTT_PREFIX = SECRET_MQTT_PREFIX;
 
 // =====================================================================
 //  I2C bit-bang (dipakai karena pin default Wire bentrok dengan SCCB kamera)
@@ -630,8 +648,9 @@ void setup()
 
 void loop()
 {
-  float w = 0;
-  readKg(w);
+  static float lastKg = 0;
+  float w = lastKg;             // pertahankan pembacaan terakhir jika HX711 gagal
+  if (readKg(w)) lastKg = w;
   unsigned long now = millis();
 
   if (WiFi.status() != WL_CONNECTED)
@@ -696,21 +715,28 @@ void loop()
       break;
 
     case STATE_DUMP:
-      if (w - tareKg > DUMP_DELTA_KG) {
-        if (lastStable == 0) lastStable = now;
-        if (now - lastStable >= STABLE_MS) {
-          sampleKg = w - tareKg;
-          if (sampleKg < 0) sampleKg = 0;
-          lcdBaris("Silahkan Tunggu", "/ Proses Data...");
-          stateStart = now;
+      {
+        float delta = w - tareKg;
+        if (delta < 0) delta = 0;
+        char bawah[17];
+        snprintf(bawah, sizeof(bawah), "Sisa +%.3f kg", delta);
+        if (delta > DUMP_DELTA_KG) {
+          if (lastStable == 0) lastStable = now;
+          if (now - lastStable >= STABLE_MS) {
+            sampleKg = delta;
+            lcdBaris("Silahkan Tunggu", "/ Proses Data...");
+            stateStart = now;
+            lastStable = 0;
+            gotResult = false;
+            uploadOk = false;
+            sentData = false;
+            state = STATE_WEIGH_UPLOAD;
+            break;
+          }
+        } else {
           lastStable = 0;
-          gotResult = false;
-          uploadOk = false;
-          sentData = false;
-          state = STATE_WEIGH_UPLOAD;
         }
-      } else {
-        lastStable = 0;
+        lcdBaris("Silahkan Buang", bawah);
       }
       break;
 
@@ -745,6 +771,7 @@ void loop()
       if (now - stateStart >= 2000) {
         tareKg = 0;
         lastStable = 0;
+        btnPerluRelease = false; // tekan berikutnya langsung tampil "Sedang Memfoto"
         lcdBaris("Tekan Tombol", "/ Untuk Memfoto");
         state = STATE_IDLE;
       }
