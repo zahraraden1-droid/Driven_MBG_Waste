@@ -186,6 +186,7 @@ Lihat `tools/README.md` untuk penjelasan lengkap.
 |---|---|
 | `docs/AUDIT_PRODUCTION_READINESS.md` | Audit kesiapan produksi: temuan per layer, skor, roadmap 30/60/90 hari |
 | `docs/AUDIT_INTEGRITAS_DATA.md` | Audit data produksi: kualitas, provenance, cakupan |
+| `docs/paper/PAPER_MBGCircular_LENGKAP.md` | **Dokumen paper lengkap**: naskah (Bagian I), laporan audit (Bagian II), daftar perbaikan (Bagian III) |
 | `docs/LAPORAN_PENGUKURAN_PAPER.md` | Hasil pengukuran latency (untuk paper) |
 | `docs/VALIDASI_PENGUJIAN.md` | Protokol validasi akurasi, kalibrasi load cell, worksheet WRI |
 | `docs/WEIGHT_ESTIMATION_DESIGN.md` | Desain estimasi berat berbasis citra |

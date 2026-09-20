@@ -1,8 +1,35 @@
+# MBGCircular — Dokumen Paper Lengkap
+
+**Satu berkas berisi tiga bagian.** Bagian I adalah naskah paper yang akan disubmit;
+Bagian II dan III adalah dokumen kerja internal yang **tidak** ikut disubmit.
+
+| Bagian | Isi | Untuk siapa |
+|---|---|---|
+| **I** | Naskah paper — kerangka *perancangan sistem & kelayakan* | Reviewer jurnal |
+| **II** | Laporan audit menyeluruh atas draf sebelumnya | Tim penulis |
+| **III** | Daftar perbaikan & data yang masih hilang | Tim penulis |
+
+**Sebelum submit:** hapus Bagian II dan III, lalu isi seluruh penanda `[PERLU DATA]`
+dan `[PERLU REFERENSI]` pada Bagian I.
+
+**Ringkasan status kesiapan:**
+- Bagian I belum siap submit — masih memuat **23 penanda** `[PERLU DATA]`/`[PERLU REFERENSI]`
+  dan dua gambar yang belum disisipkan.
+- Klaim besaran dampak (akurasi 92%, galat <1%, latency <2 detik, WRI 81,78–82,29%)
+  sudah **dikeluarkan** dari posisi klaim hasil karena tidak memiliki data pendukung.
+- Kerangka paper: **perancangan sistem & kelayakan**, bukan uji kinerja.
+
+---
+
+# BAGIAN I — NASKAH PAPER
+
+<div style="page-break-after: always;"></div>
+
 # MBGCircular: Perancangan Sistem AIoT untuk Deteksi Multikelas Sisa Makanan dan Telemetri Pengelolaan Sampah Organik Sekolah
 
 **DRAF FINAL — kerangka: perancangan sistem & kelayakan (system design & feasibility)**
 
-**Untuk diisi sebelum submit:** lihat `DAFTAR_PERBAIKAN_DAN_DATA_HILANG.md`. Setiap penanda `[PERLU DATA]` dan `[PERLU REFERENSI]` tidak boleh diisi dengan angka perkiraan.
+**Untuk diisi sebelum submit:** lihat **Bagian III** dokumen ini. Setiap penanda `[PERLU DATA]` dan `[PERLU REFERENSI]` tidak boleh diisi dengan angka perkiraan.
 
 ---
 
@@ -409,3 +436,396 @@ Sumber yang dikutip dalam teks dan wajib dilengkapi:
 4. Studi FISIP UI. (2025). *[judul dan penulis]*.
 5. Standley, T., dkk. (2017). *image2mass: Estimating the Mass of an Object from Its Image.* ICML.
 6. *[Referensi Bagian 2.1–2.5]*
+
+
+---
+
+# BAGIAN II — LAPORAN AUDIT PAPER
+
+> Dokumen internal. **Hapus sebelum submit.**
+
+**Objek audit:** (1) Draf asli `AIOT DRIVEN MBG WASTE.txt`; (2) `DOKUMEN REVISI PAPER AIoT.txt`; (3) seluruh sistem yang berjalan (kode, basis data produksi, firmware) sebagai sumber verifikasi klaim.
+**Tanggal audit:** 20 September 2026
+**Metode:** penilaian tiap bagian terhadap standar artikel ilmiah; setiap klaim yang dapat diuji diverifikasi langsung ke kode/database.
+**Dokumen hasil:** Bagian I (naskah) dan Bagian III (daftar perbaikan) pada dokumen ini
+
+---
+
+### A. Ringkasan Eksekutif
+
+#### A.1 Penilaian umum
+
+| Aspek | Nilai | Keterangan |
+|---|---|---|
+| Kelengkapan struktur | **4/10** | Tinjauan pustaka, kesimpulan, dan daftar pustaka tidak ada pada draf asli |
+| Kejelasan rumusan masalah | **7/10** | Rumusan jelas, tetapi satu pertanyaan (kapasitas SDM) tidak dapat dijawab |
+| Kesesuaian metode | **5/10** | Kerangka ADDIE ada, tetapi tanpa n, protokol, dan prosedur |
+| Dukungan bukti atas klaim | **2/10** | **Masalah terbesar.** Seluruh angka kinerja tanpa data pendukung |
+| Kejujuran pelaporan | **6/10** (draf revisi) / **3/10** (draf asli) | Draf revisi sudah membaik dengan hedging, tetapi masih ada kekeliruan arah |
+| Kualitas data | **2/10** | Data yang tersimpan tidak dapat menopang klaim apa pun |
+| Keterlacakan & reprodusibilitas | **3/10** | Tanpa prosedur, tanpa kode/skema yang disertakan |
+| Kepatuhan etika | **2/10** | Belum ada pernyataan etika maupun tata kelola citra |
+| **Kesiapan submit (kondisi saat ini)** | **3/10** | **Belum siap.** Terdapat klaim yang tidak dapat dipertanggungjawabkan |
+
+#### A.2 Tiga temuan terpenting
+
+**Temuan 1 — Draf revisi justru melemahkan paper tanpa perlu.** Dokumen revisi menetapkan AI hanya "deteksi biner True/False" dan menyatakan analitik jenis makanan "belum diimplementasikan". Verifikasi terhadap sistem yang berjalan menunjukkan **kebalikannya**: model mengeluarkan kelas spesifik (`nasi`, `Tahu`, `Ayam_Goreng`, `cap_cai`, `Kelengkeng`), backend memetakan ke kategori, dan antarmuka menampilkan peringkat. Revisi ini diperbaiki dengan **memulihkan klaim multikelas**, disertai syarat pelaporan metrik per kelas.
+
+**Temuan 2 — Angka 92%, <1%, <2 detik, dan WRI 81,78–82,29% tidak memiliki bukti tersimpan.** Tidak ada log akurasi, tidak ada prosedur kalibrasi terekam, tidak ada instrumentasi durasi saat pengukuran (kini sudah dipasang), dan `maggot_harvests` berisi **0 baris**. Keempatnya dihapus dari posisi klaim hasil.
+
+**Temuan 3 — Data yang tersimpan tidak dapat menopang klaim kinerja.** Audit basis data produksi menemukan: 54 dari 60 baris deteksi bernilai **0 kg**, total seluruh korpus **0,200 kg**, dan **32 dari 32** baris telemetri tidak memuat satu pun nilai sensor. Sebagian besar angka pada tabel kinerja tidak dapat dihitung dari data ini.
+
+---
+
+### B. Audit per Bagian
+
+| Bagian | Kondisi draf lama | Temuan | Severity | Sudah ditangani di draf final | Sisa pekerjaan |
+|---|---|---|---|---|---|
+| **Judul** | "…Conversion to Fertilizer and Maggot Biomass" | Menjanjikan karakterisasi pupuk & biomassa, tetapi `maggot_harvests` = 0 baris dan tidak ada data proksimat | **Critical** | Ya — judul diubah, fokus pada deteksi & telemetri | Persetujuan tim |
+| **Abstrak** | Memuat 92%, <1%, <2 dtk, WRI sebagai hasil | Mencampur hasil ukur dengan rujukan; tanpa n | **Critical** | Ya — hanya angka terukur, WRI sebagai rujukan | Referensi WRI |
+| **Pendahuluan** | 2.400 ton/hari & 200.706 ton CO₂e tanpa asumsi; Rp213–551 T disandingkan dengan MBG | Angka tanpa rincian perhitungan; agregat nasional berpotensi menyesatkan | High | Ya — klarifikasi cakupan ditambahkan | Sumber angka |
+| **Rumusan masalah** | RQ-3 menggabungkan performa biologis dan kapasitas SDM | Dua hal berbeda digabung; yang satu terukur, yang satu tidak | High | Ya — RQ-3 dirumuskan ulang agar dapat dijawab | — |
+| **Manfaat/Dampak** | "terbukti efektif", "berhasil mempermudah" | Klaim kausal dari data observasional | High | Ya — bahasa proporsional | — |
+| **Tinjauan Pustaka** | **Tidak ada** | Klaim kebaruan tidak dapat diverifikasi; pembahasan tanpa basis pembanding | **Critical** | Kerangka disediakan | **Pencarian literatur oleh penulis** |
+| **Metode — waktu & lokasi** | Tidak menyebut waktu sama sekali | Reproduksibilitas hilang | High | Ya — placeholder ditandai jelas | **Isi tanggal & lokasi** |
+| **Metode — instrumen** | Menyebut Supabase **dan** ThingsBoard tanpa membedakan peran | Ambiguitas arsitektur | Medium | Ya — diklarifikasi: ThingsBoard tidak dipakai, inferensi di server | — |
+| **Metode — protokol** | Tidak ada n, pembagian data, atau prosedur pelabelan | Tanpa ini, akurasi 92% tidak dapat ditafsirkan | **Critical** | Placeholder terstruktur | **Tulis protokol** |
+| **Metode — kalibrasi load cell** | Tidak ada | Klaim galat tidak dapat direproduksi | **Critical** | Placeholder | **Jalankan & catat** |
+| **Metode — parameter biokonversi** | Tidak ada densitas, instar, laju pakan, suhu, ulangan | Kombinasi reduksi tinggi dalam <24 jam tidak dapat dinilai kewajarannya secara biologis | **Critical** | Placeholder | **Jalankan eksperimen** |
+| **Metode — etika** | Tidak ada | Penelitian melibatkan citra anak di bawah umur; banyak jurnal melakukan *desk rejection* | **Critical** | Kerangka + mitigasi teknis | **Urus persetujuan** |
+| **Tabel 1 (status AI)** | Menyatakan verifikasi True/False sebelum penimbangan | **Fitur ini tidak ada di program yang terpasang** — tidak ada pengecekan presensi sisa makanan | **Critical** | Tabel dihapus dari hasil; fitur dinyatakan belum diimplementasikan | Implementasi atau hapus dari rancangan |
+| **Rumus WRI** | `(W₀−Wₜ)/W₀`, tanpa dimensi waktu, disebut "WRI" | Istilah tidak konsisten dengan literatur | Medium | Ya — disebut **ERS**, durasi dilaporkan terpisah | Referensi definisi |
+| **Tabel 2 (biokonversi)** | 81,78–82,29%, <24 jam | Disajikan sebagai hasil sendiri di sebagian bagian, sebagai kutipan di bagian lain | **Critical** | Ya — disajikan **hanya** sebagai rujukan literatur | **Keputusan atribusi** |
+| **Tabel 4 (kinerja)** | Enam angka tanpa n, tanpa sebaran | Tidak dapat ditafsirkan | **Critical** | Diganti tabel dengan n & kondisi pengukuran | Data tambahan |
+| **Hasil — analitik jenis makanan** | Dijanjikan, tetapi dinilai belum diimplementasikan | **Justru sudah ada** | High | Ya — dipulihkan sebagai multikelas | Akurasi per kelas |
+| **Pembahasan** | Mengulang Hasil; "terbukti efektif"; tanpa pembanding | Tidak memenuhi fungsi diskusi ilmiah | High | Ya — interpretasi alternatif ditambahkan | **Pembanding literatur** |
+| **Keterbatasan** | **Tidak ada** | Wajib ada | High | Ya — 10 butir eksplisit | — |
+| **Kesimpulan** | **Tidak ada** | Struktur paper tidak lengkap | High | Ya — ditambahkan | — |
+| **Daftar Pustaka** | **Tidak ada** | Klaim tidak dapat diverifikasi pembaca | **Critical** | Kerangka disediakan | **Susun entri lengkap** |
+| **Pernyataan pendanaan/konflik** | Tidak ada | Syarat format dasar | Medium | Kerangka disediakan | **Isi** |
+| **Gambar 1** | Dirujuk tetapi tidak ada dalam naskah | Pembaca tidak dapat melihat arsitektur | Medium | Placeholder ditandai | **Sisipkan gambar** |
+| **Reprodusibilitas** | Tidak ada kode, skema rangkaian, atau data mentah | Tidak dapat direplikasi | High | Placeholder | **Lampirkan** |
+
+---
+
+### C. Audit Klaim (verifikasi terhadap sistem nyata)
+
+Setiap klaim diperiksa langsung ke kode, basis data produksi, atau pengukuran.
+
+| # | Klaim pada draf | Hasil verifikasi | Status | Tindakan |
+|---|---|---|---|---|
+| 1 | Akurasi deteksi **92%** | Tidak ada log *ground truth* vs prediksi di sistem mana pun | **Tidak terbukti** | Dihapus; ganti dengan protokol pengukuran |
+| 2 | Galat *load cell* **<1%** | Tidak ada prosedur kalibrasi terekam. Data yang ada: 54/60 baris **0 kg**, total 0,200 kg, ambang sesi 0,02 kg → berada di **lantai derau** | **Tidak terbukti** | Dihapus; ganti dengan rencana kalibrasi |
+| 3 | Latency **<2 detik** | Saat audit, tidak ada instrumentasi durasi. Kini terpasang dan terukur | **Tidak terbukti** | Diganti angka terukur: basis data median 319,4 ms; rantai telemetri 298 ms |
+| 4 | **WRI 81,78–82,29%** | `maggot_harvests` = 0 baris; tidak ada `W₀`/`Wₜ` | **Tidak terbukti** | Disajikan sebagai rujukan literatur |
+| 5 | Durasi penguraian **<24 jam** | Tidak ada data waktu pengamatan | **Tidak terbukti** | Dipindahkan ke keterbatasan |
+| 6 | "*Monitoring* real-time" | 32 baris telemetri tersimpan, **0 memuat nilai sensor** | **Tidak terbukti** | Diganti: penjadwalan terbukti, validitas nilai belum |
+| 7 | Analitik jenis makanan | **Terbukti ada** — model multikelas, backend memetakan kategori, UI menampilkan peringkat | **Terbukti (sebagian)** | Dipulihkan sebagai klaim multikelas; akurasi per kelas masih perlu diukur |
+| 8 | Deteksi biner True/False sebelum penimbangan | **Tidak ada di program terpasang** | **Tidak terbukti** | Dinyatakan belum diimplementasikan |
+| 9 | Eliminasi bau & vektor penyakit | Tidak ada pengukuran apa pun | **Tidak terbukti** | Bersifat observasional; dinyatakan sebagai keterbatasan |
+| 10 | Peningkatan kapasitas SDM | Tidak ada instrumen | **Tidak terbukti** | Menjadi agenda lanjutan |
+| 11 | Penghematan emisi CO₂e | Faktor 0,52 tanpa rujukan; tayang di dashboard publik | **Tidak terbukti asumsinya** | Perlu sumber atau ditandai estimasi |
+| 12 | Interval telemetri 30 detik | **Terbukti** — median 30,0 s, n=31 | **Terbukti** | Dilaporkan dengan n |
+| 13 | Rantai data berjalan end-to-end | **Terbukti** — 32 insert, alur MQTT→backend→DB | **Terbukti** | Dilaporkan |
+
+Neraca: **2 klaim terbukti, 1 terbukti sebagian, 8 tidak terbukti, 1 asumsinya tanpa rujukan.**
+
+---
+
+### D. Audit Integritas Data
+
+Ringkasan dari `AUDIT_INTEGRITAS_DATA.md`:
+
+| Tabel | Baris | Kondisi | Dampak pada paper |
+|---|---:|---|---|
+| `waste_records` | 60 | **54 bernilai 0 kg**; total 0,200 kg; 1 tanggal | Tabel distribusi kategori tidak dapat digeneralisasi |
+| `sensor_readings` | 32 | **0 memuat nilai sensor** | Klaim pemantauan lingkungan tanpa bukti |
+| `maggot_harvests` | **0** | kosong | Klaim biomassa/panen tidak mungkin dihitung |
+| `menu_uploads` | **0** | kosong | Korelasi menu–limbah **tidak mungkin dihitung** |
+| `sales_records` | **0** | kosong | Klaim pemasukan tidak dapat didukung |
+| `maggot_batches` | 1 | batch `001`, 5 gram telur, status `inkubasi` | Tidak ada siklus yang selesai |
+| `ai_predictions` | 0 | **tidak pernah ditulis kode mana pun** | Klaim penyimpanan prediksi tidak didukung implementasi |
+
+**Skor kesiapan data untuk klaim riset: 15/100.**
+
+---
+
+### E. Audit Konsistensi Internal
+
+| # | Inkonsistensi | Lokasi | Severity | Tindakan |
+|---|---|---|---|---|
+| 1 | WRI sebagai kutipan di satu bagian, sebagai hasil sendiri di bagian lain | Abstrak vs Manfaat/Dampak | **Critical** | Diputuskan penulis |
+| 2 | AI disebut biner, tetapi analitik jenis makanan diklaim | Tabel 1 vs Tabel 3/4 | **Critical** | Diselaraskan menjadi multikelas |
+| 3 | Supabase dan ThingsBoard disebut keduanya tanpa pembedaan peran | Metode | Medium | Diklarifikasi |
+| 4 | Inferensi disebut di ESP32-Cam dan di server | Metode | Medium | Diklarifikasi: di server |
+| 5 | Durasi penguraian <24 jam vs reduksi 82% — tidak dijelaskan apakah basis basah/kering | Hasil | High | Dinyatakan sebagai keterbatasan |
+| 6 | Peraturan BGN membebankan SPPG, sistem dipasang di sekolah | Pendahuluan | Medium | Dicatat sebagai pertanyaan terbuka |
+| 7 | Judul menjanjikan pupuk & biomassa, isi tidak memuat keduanya | Judul vs Isi | **Critical** | Judul diubah |
+
+---
+
+### F. Audit Etika & Kepatuhan
+
+| Butir | Kondisi | Severity | Kebutuhan |
+|---|---|---|---|
+| Persetujuan sekolah/komite etik | **Tidak ada** | **Critical** | Surat persetujuan |
+| Persetujuan orang tua/wali | **Tidak ada** | **Critical** | Mekanisme dan bentuk |
+| Kebijakan retensi citra | **Tidak ada** | High | Durasi simpan & prosedur hapus |
+| Anonimisasi data siswa | Skema **tidak menyimpan** PII; hanya agregat | Baik | Dinyatakan sebagai mitigasi |
+| Kepatuhan UU PDP No. 27/2022 | Belum dinyatakan | High | Pernyataan kepatuhan |
+| Izin penggunaan foto training | Tidak dapat diverifikasi dari repo | Medium | Konfirmasi |
+
+Catatan: penilaian ini **tidak** menuduh adanya pelanggaran. Yang dicatat adalah bahwa **dokumentasi** yang diperlukan untuk submisi belum ada.
+
+---
+
+### G. Audit Format & Kesiapan Submit
+
+| Butir | Kondisi | Kebutuhan |
+|---|---|---|
+| Gaya sitasi | Tidak konsisten; daftar pustaka kosong | Ikuti template jurnal tujuan |
+| Gambar | Gambar 1 dirujuk, tidak ada | Sisipkan diagram arsitektur |
+| Penomoran tabel | Tabel 2 dan 3 dipertahankan tanpa nilai yang sah | Perbarui setelah data tersedia |
+| Placeholder `[PERLU DATA]` | Masih ada di draf final | Isi sebelum submit |
+| Panjang abstrak | Belum disesuaikan | Sesuaikan batas jurnal |
+| Bahasa | Indonesia akademik, konsisten | Pertahankan |
+| Lampiran data mentah | Tidak ada | Sertakan bila diminta jurnal |
+
+---
+
+### H. Kekuatan Paper (agar penilaian berimbang)
+
+1. **Masalah nyata dan relevan** dengan kebijakan nasional, dengan dasar regulasi yang dapat dilacak keberadaannya.
+2. **Integrasi tiga pilar** (deteksi visual, telemetri penimbangan, pemantauan biokonversi) merupakan kebaruan yang wajar dan bukan sekadar penambahan sensor.
+3. **Perangkat keras berbiaya rendah** menjadikan sistem dapat direplikasi sekolah lain — kontribusi praktis yang dapat diverifikasi dari daftar komponen.
+4. **Arsitektur benar-benar terbangun dan berjalan**, bukan sekadar rancangan di atas kertas. Ini keunggulan yang tidak dimiliki banyak paper perancangan.
+5. **Draf revisi sudah menunjukkan kesediaan mengakui keterbatasan** — modal penting menghadapi reviewer.
+6. **Temuan metodologis pada Bagian 5.4** (pembagian bobot mengabaikan densitas) adalah kontribusi nyata hasil audit, bukan sekadar kritik.
+
+---
+
+### I. Kesimpulan Audit
+
+Paper ini **belum siap submit**, tetapi **dapat disiapkan** dengan dua jalur:
+
+**Jalur cepat (system design & feasibility).** Fokuskan paper pada rancangan dan verifikasi fungsional — yang memang sudah terbukti. Hapus seluruh klaim kinerja biologis dan kuantitatif. Lengkapi tinjauan pustaka, daftar pustaka, etika, dan protokol. Nilai: jujur, dapat dipertahankan, kontribusi jelas.
+
+**Jalur kuat (tambahkan data minimum).** Jalur cepat + dua pengukuran tambahan: (a) eksperimen maggot terkontrol 3 wadah dengan kelompok tanpa larva, 24–48 jam; (b) minimal 150 foto berlabel untuk akurasi per kelas. Nilai: jauh lebih kuat, tetapi memerlukan waktu lapangan.
+
+Risiko terbesar bila tetap disubmit dalam kondisi sekarang adalah **klaim biologis tanpa data** — ini jenis temuan yang paling mudah dikenali reviewer dan paling sulit dipertahankan.
+
+
+---
+
+# BAGIAN III — DAFTAR PERBAIKAN & DATA YANG MASIH HILANG
+
+> Dokumen internal. **Hapus sebelum submit.**
+
+**Untuk:** Tim penulis paper MBGCircular
+**Dokumen pendamping:** Bagian I (naskah) dan Bagian III (daftar perbaikan) pada dokumen ini
+
+Dokumen ini memuat dua bagian: **(A)** perbaikan yang dapat dikerjakan tanpa pengujian baru, dan **(B)** data yang harus diukur. Setiap butir menyebutkan siapa yang perlu mengerjakan dan berapa lama.
+
+---
+
+### Bagian A — Perbaikan yang dapat dikerjakan sekarang
+
+Tidak memerlukan pengujian. Dapat diselesaikan dalam 1–2 hari.
+
+| # | Perbaikan | Lokasi di draf | Prioritas | Penanggung jawab | Waktu |
+|---|---|---|---|---|---|
+| A1 | **Putuskan atribusi angka 81,78–82,29%**: kutipan Akmal (2024), atau hasil pengukuran tim? | Seluruh naskah | **Critical** | Penulis utama | 10 menit |
+| A2 | Lengkapi entri daftar pustaka untuk 5 sumber yang sudah dikutip | Daftar Pustaka | **Critical** | Penulis | 2–3 jam |
+| A3 | Tulis Tinjauan Pustaka (Bagian 2) — minimal 3–5 studi *plate waste* + 2–3 studi BSF | Bagian 2 | **Critical** | Penulis | 1 hari |
+| A4 | Isi tanggal mulai & berakhir penelitian serta karakteristik lokasi | Bagian 3.1 | High | Penulis | 15 menit |
+| A5 | Isi pernyataan pendanaan, konflik kepentingan, dan kontribusi penulis | Bagian PERNYATAAN | High | Seluruh penulis | 30 menit |
+| A6 | Sisipkan **Gambar 1** (diagram arsitektur) — sudah ada deskripsi teks di Bagian 3.4 | Bagian 3.4 | High | Penulis | 1 jam |
+| A7 | Sesuaikan abstrak dengan batas kata jurnal tujuan | Abstrak | Medium | Penulis | 30 menit |
+| A8 | Seragamkan gaya sitasi sesuai template jurnal | Seluruh naskah | Medium | Penulis | 1 jam |
+| A9 | Hapus seluruh placeholder `[PERLU DATA]` yang tidak dapat diisi — ubah menjadi pernyataan keterbatasan | Seluruh naskah | High | Penulis | 1 jam |
+| A10 | Sertakan lampiran data mentah (atau nyatakan tidak disertakan beserta alasannya) | Lampiran | Medium | Penulis | 1 jam |
+| A11 | Konfirmasi judul baru disetujui seluruh penulis | Judul | High | Tim | 15 menit |
+| A12 | Lengkapi nomor pasal Peraturan BGN No. 1/2026 yang dikutip | Pendahuluan 1.1 | Medium | Penulis | 1 jam |
+
+#### A1 — Mengapa ini paling penting
+
+Angka 81,78–82,29% muncul sebagai **kutipan** (Akmal, 2024) di bagian Manfaat/Dampak, tetapi sebagai **hasil pengukuran sendiri** di Abstrak, Tabel 2, Tabel 4, dan Pembahasan. Ini tidak dapat dibiarkan: reviewer akan menemukannya, dan efeknya merusak kredibilitas seluruh naskah.
+
+Tiga kemungkinan jawaban:
+
+| Jawaban | Konsekuensi |
+|---|---|
+| **Kutipan Akmal (2024)** | Draf final sudah benar. Cukup pastikan seluruh penyebutan konsisten sebagai rujukan pembanding. **Tidak perlu eksperimen.** |
+| **Hasil pengukuran tim** | Wajib menyertakan `W₀`, `Wₜ`, durasi, dan jumlah ulangan. Tanpa itu, klaim tidak dapat dipertahankan → kerjakan Bagian B1 |
+| **Tidak yakin** | Gunakan jalur kutipan sampai data ditemukan. Jangan menuliskan sebagai hasil. |
+
+---
+
+### Bagian B — Data yang harus diukur
+
+#### B1. Eksperimen biokonversi minimum (paling berdampak)
+
+**Untuk apa:** menutup klaim Tabel 2 (reduksi sampah & durasi penguraian). Tanpa ini, klaim biologis harus dihapus seluruhnya.
+
+| Aspek | Ketentuan |
+|---|---|
+| **Durasi** | 48 jam (pengamatan pada 24 dan 48 jam) |
+| **Perlakuan** | 2 wadah berisi larva + **1 wadah kontrol TANPA larva** |
+| **Substrat** | 1 kg sisa makanan per wadah, dari sumber yang sama |
+| **Yang ditimbang** | `W₀` (awal), `Wₜ` (24 jam), `Wₜ` (48 jam) |
+| **Yang dicatat** | Densitas larva (gram larva/kg substrat), instar, suhu ruang, kelembapan |
+| **Wajib dicatat** | **Basis bobot: BASAH atau KERING** |
+| **Rumus** | `ERS = (W₀ − Wₜ)/W₀ × 100%`, dilaporkan bersama durasi `t` |
+| **Rumus lanjutan** | `ERS_bebas_evaporasi` = selisih dengan kontrol |
+
+**Mengapa kelompok kontrol wajib:** tanpa kontrol, penurunan bobot basah dapat berasal dari **penguapan air**, bukan konversi oleh larva. Satu wadah kontrol memisahkan keduanya — dan inilah pembeda antara data yang dapat dipertahankan dan yang akan ditolak reviewer.
+
+**Yang harus dilaporkan apa adanya:** jika hasilnya 30% atau 50%, laporkan 30% atau 50%. **Angka rendah dengan metode benar jauh lebih kuat daripada angka tinggi tanpa metode.** Dan jangan sebut "WRI" bila rumus tidak memuat dimensi waktu — sebut **ERS**.
+
+Berkas kerja: `VALIDASI_PENGUJIAN.md` (di folder `docs/`) Bagian 3.
+
+---
+
+#### B2. Akurasi deteksi (menggantikan klaim 92%)
+
+**Untuk apa:** menutup klaim akurasi dan mendukung klaim multikelas.
+
+| Aspek | Ketentuan |
+|---|---|
+| **Jumlah minimum** | 150 ompreng (target 300) |
+| **Pengambilan** | Jangan hanya ompreng bersisa — sertakan yang kosong |
+| **Pelabelan** | Minimal **2 pelabel independen**; pelabel ketiga sebagai pemutus |
+| **Yang dilarang** | Memakai keluaran Roboflow sebagai *ground truth* |
+| **Yang dilaporkan** | Matriks konfusi, presisi, recall, F1 **per kelas**, macro-F1, dan **baseline mayoritas-kelas** |
+
+**Mengapa baseline wajib:** kutipan paper sendiri menyatakan 85–88% siswa menyisakan makanan. Model yang selalu menjawab "ada sisa" akan memperoleh akurasi 85–88% tanpa belajar apa pun. Tanpa baseline, angka akurasi mudah disalahartikan.
+
+Berkas kerja: `tools/validasi/hitung-akurasi.py` (sudah siap pakai).
+
+**Perkiraan waktu:** 3–5 hari (termasuk pelabelan).
+
+---
+
+#### B3. Kalibrasi load cell (menggantikan klaim galat <1%)
+
+**Untuk apa:** menutup klaim presisi penimbangan.
+
+| Aspek | Ketentuan |
+|---|---|
+| **Massa acuan** | 5 titik, mis. 50 g, 100 g, 200 g, 500 g, 1000 g |
+| **Ulangan** | 5× per titik |
+| **Yang dihitung** | Galat %FS, repeatability (simpangan baku), R² regresi linier |
+| **Wajib dinyatakan** | **Rentang bobot tempat galat diukur** |
+
+**Konteks dari audit:** data yang ada justru berada di dekat ambang deteksi (0,02 kg/sesi) dengan 90% baris bernilai 0 — yaitu **lantai derau**. Angka "galat <1%" tanpa menyebut rentang tidak bermakna: 1% dari 0,02 kg = 0,2 gram, tidak realistis untuk *load cell* 10 kg.
+
+Berkas kerja: `VALIDASI_PENGUJIAN.md` (di folder `docs/`) Bagian 2.
+
+**Perkiraan waktu:** 1 hari.
+
+---
+
+#### B4. Latensi inferensi Roboflow
+
+**Untuk apa:** melengkapi Tabel 2.
+
+| Aspek | Ketentuan |
+|---|---|
+| **Cara** | `ROBOFLOW_API_KEY=<kunci> node tools/benchmark/03-benchmark-latency.mjs --n=30` |
+| **Yang dilaporkan** | min, median, rata-rata, p95, maks, dan **n** |
+
+**Catatan:** instrumentasi berjenjang kini sudah terpasang permanen di backend, sehingga distribusi latensi dapat dihitung ulang kapan saja dari data nyata tanpa pengukuran manual.
+
+**Perkiraan waktu:** 1 jam (tersedia kunci API).
+
+---
+
+#### B5. Data lapangan multi-hari
+
+**Untuk apa:** menutup Tabel 3 dan membuat distribusi kategori layak dilaporkan.
+
+| Aspek | Kondisi saat ini | Minimum yang diperlukan |
+|---|---|---|
+| Jumlah hari | **1 hari** | ≥ 5 hari sekolah |
+| Baris bermakna | 6 dari 60 (90% nol) | Perbaiki validasi dulu (sudah dikerjakan di kode) |
+| Jumlah transaksi | 6 | ≥ 100 |
+
+**Penting:** perbaikan validasi pada kode **sudah selesai** — sesi dengan bobot 0 kg kini ditolak, dan pengiriman hasil simulasi tidak lagi disimpan. Namun perbaikan itu **belum aktif di produksi** karena migrasi basis data belum dijalankan (lihat `PANDUAN_EKSEKUSI_OPERATOR.md` (di folder `docs/`)).
+
+---
+
+#### B6. Etika & tata kelola data
+
+| Butir | Kondisi | Kebutuhan |
+|---|---|---|
+| Persetujuan sekolah | Belum ada | Surat persetujuan |
+| Persetujuan orang tua/wali | Belum ada | Mekanisme & bentuk |
+| Kebijakan retensi citra | Belum ada | Durasi simpan & prosedur hapus |
+| Pernyataan UU PDP No. 27/2022 | Belum ada | Pernyataan kepatuhan |
+
+**Wajib sebelum submit ke jurnal mana pun** untuk penelitian yang melibatkan citra anak di bawah umur.
+
+**Mitigasi yang sudah ada dan dapat dinyatakan:** skema basis data **tidak menyimpan** nama, nomor induk, atau identitas siswa — hanya tanggal, kategori, bobot, dan cap waktu.
+
+---
+
+### Bagian C — Keputusan strategis
+
+> **KEPUTUSAN: JALAN A — kerangka perancangan sistem & kelayakan.**
+>
+> Bagian I dokumen ini sudah disusun ulang dengan kerangka ini.
+> Konsekuensinya: **Bagian B1 dan B2 di bawah menjadi opsional** (nilai tambah),
+> bukan syarat kelayakan submit. Yang tetap wajib adalah **Bagian A** dan
+> **Bagian B6 (etika)**.
+>
+> Dengan Jalan A, klaim yang dipegang hanya: arsitektur terbangun & berjalan,
+> deteksi multikelas berjalan, telemetri andal, sistem menyimpan data kuantitatif,
+> dan komponen berbiaya rendah. Seluruh klaim besaran dampak dinyatakan belum diuji.
+>
+> Angka WRI 81,78–82,29% **tidak lagi muncul sama sekali** di draf final, sehingga
+> keputusan atribusinya (butir A1) tidak lagi menghambat submit. Namun bila angka
+> itu tetap ingin disebut sebagai pembanding literatur, A1 tetap perlu dijawab.
+
+| Aspek | Tanpa data tambahan (Jalan A murni) | Bila sempat menambah data |
+|---|---|---|
+| Klaim dampak biologis | Dinyatakan belum diuji | Dapat diklaim dengan B1 |
+| Akurasi model | Dinyatakan belum diukur | Dapat diklaim per kelas dengan B2 |
+| Presisi penimbangan | Dinyatakan belum dikarakterisasi | Dapat diklaim dengan B3 |
+| Kelayakan submit | **Sudah layak setelah Bagian A + B6 selesai** | Lebih kuat |
+
+**Yang harus dihindari dalam kondisi apa pun:** submit dengan angka biologis yang tidak pernah diukur. Itu bukan "data simulasi", melainkan **fabrikasi**, dan merupakan risiko terbesar pada naskah.
+
+---
+
+### Daftar centang sebelum submit
+
+**Wajib (Jalan A):**
+- [ ] Daftar pustaka lengkap (A2)
+- [ ] Tinjauan pustaka terisi (A3)
+- [ ] `maggot_harvests` = 0 → klaim biomassa/pupuk dihapus atau data disediakan
+- [ ] `menu_uploads` = 0 → klaim korelasi menu dihapus atau data disediakan
+- [ ] Etika & tata kelola citra dilengkapi (B6)
+- [ ] Tidak ada placeholder `[PERLU DATA]` yang tersisa tanpa penjelasan
+- [ ] Judul sesuai cakupan data
+- [ ] Gambar 1 disisipkan
+
+**Nilai tambah bila waktu memungkinkan:**
+- [ ] Eksperimen maggot 3 wadah termasuk kontrol (B1)
+- [ ] Kalibrasi load cell terekam (B3)
+- [ ] Latensi Roboflow terukur (B4)
+- [ ] Akurasi per kelas + baseline mayoritas-kelas (B2)
+- [ ] Estimasi biaya per unit, sebagai dukungan klaim arsitektur berbiaya rendah
+
+**Sebelum data lapangan dikumpulkan:**
+- [ ] Jalankan 4 migrasi basis data (`PANDUAN_EKSEKUSI_OPERATOR.md` (di folder `docs/`))
+- [ ] Deploy backend versi baru — agar sesi tanpa nilai tidak lagi tersimpan
+- [ ] Pastikan rentang tanggal data yang dikutip hanya memuat baris bermakna
+
+---
+
+### Satu hal yang perlu diperhatikan saat mengumpulkan data baru
+
+Sistem saat ini membagi bobot ke jenis makanan berdasarkan **luas kotak pembatas** saja, tanpa memperhitungkan densitas jenis makanan. Audit mengukur dampaknya pada deteksi nyata: **nasi +30,3%** dan **sayur −28,4%** dibanding metode yang memperhitungkan densitas. Karena luaran utama sistem adalah peringkat makanan terbuang, selisih ini **berpotensi mengubah peringkat dan rekomendasi menu**.
+
+Selama peringkat menjadi salah satu luaran yang dilaporkan, perbaikan ini perlu dikerjakan sebelum data dikumpulkan dalam jumlah besar. Rancangannya tersedia di `WEIGHT_ESTIMATION_DESIGN.md` (di folder `docs/`), dan aktivasi awalnya tidak memerlukan kalibrasi (cukup memakai ambang keyakinan deteksi).
+
