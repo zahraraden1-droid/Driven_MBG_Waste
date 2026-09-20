@@ -10,7 +10,6 @@ build
 .env
 .env.local
 .env.*.local
-ENV_VARIABLES.txt
 
 # Kredensial firmware. Salinan ada di tiap folder sketch agar sketch dapat
 # dikompilasi sendirian di Arduino IDE; semuanya TIDAK di-commit.

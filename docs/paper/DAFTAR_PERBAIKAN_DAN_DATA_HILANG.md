@@ -150,24 +150,35 @@ Berkas kerja: `docs/VALIDASI_PENGUJIAN.md` Bagian 2.
 
 ## Bagian C — Keputusan strategis
 
-Anda perlu memilih satu jalur sebelum melanjutkan.
+> **KEPUTUSAN: JALAN A — kerangka perancangan sistem & kelayakan.**
+>
+> Draf `PAPER_MBGCircular_DRAF_FINAL.md` sudah disusun ulang dengan kerangka ini.
+> Konsekuensinya: **Bagian B1 dan B2 di bawah menjadi opsional** (nilai tambah),
+> bukan syarat kelayakan submit. Yang tetap wajib adalah **Bagian A** dan
+> **Bagian B6 (etika)**.
+>
+> Dengan Jalan A, klaim yang dipegang hanya: arsitektur terbangun & berjalan,
+> deteksi multikelas berjalan, telemetri andal, sistem menyimpan data kuantitatif,
+> dan komponen berbiaya rendah. Seluruh klaim besaran dampak dinyatakan belum diuji.
+>
+> Angka WRI 81,78–82,29% **tidak lagi muncul sama sekali** di draf final, sehingga
+> keputusan atribusinya (butir A1) tidak lagi menghambat submit. Namun bila angka
+> itu tetap ingin disebut sebagai pembanding literatur, A1 tetap perlu dijawab.
 
-| Jalur | Isi | Waktu | Kekuatan |
-|---|---|---|---|
-| **A. System design & feasibility** | Rancangan + verifikasi fungsional. Klaim biologis dihapus. | 2 hari (A1–A12) | Jujur, dapat dipertahankan, kontribusi jelas |
-| **B. A + data minimum** | Jalur A + B1 (maggot 3 wadah 48 jam) + B3 (kalibrasi) | 4–6 hari | Jauh lebih kuat; satu klaim biologis sah |
-| **C. A + B + akurasi** | Jalur B + B2 (150 foto berlabel) | 8–12 hari | Paling kuat; semua tabel terisi |
+| Aspek | Tanpa data tambahan (Jalan A murni) | Bila sempat menambah data |
+|---|---|---|
+| Klaim dampak biologis | Dinyatakan belum diuji | Dapat diklaim dengan B1 |
+| Akurasi model | Dinyatakan belum diukur | Dapat diklaim per kelas dengan B2 |
+| Presisi penimbangan | Dinyatakan belum dikarakterisasi | Dapat diklaim dengan B3 |
+| Kelayakan submit | **Sudah layak setelah Bagian A + B6 selesai** | Lebih kuat |
 
-**Rekomendasi: Jalur B.** Memberi satu klaim biologis yang sah dengan tambahan waktu paling kecil. Klaim akurasi (B2) adalah nilai tambah, bukan penentu kelayakan submit.
-
-**Yang harus dihindari:** submit dengan angka biologis yang tidak pernah diukur. Itu bukan "data simulasi", melainkan **fabrikasi**, dan merupakan risiko terbesar pada naskah saat ini.
+**Yang harus dihindari dalam kondisi apa pun:** submit dengan angka biologis yang tidak pernah diukur. Itu bukan "data simulasi", melainkan **fabrikasi**, dan merupakan risiko terbesar pada naskah.
 
 ---
 
 ## Daftar centang sebelum submit
 
-**Wajib:**
-- [ ] Atribusi angka WRI diputuskan dan konsisten di seluruh naskah (A1)
+**Wajib (Jalan A):**
 - [ ] Daftar pustaka lengkap (A2)
 - [ ] Tinjauan pustaka terisi (A3)
 - [ ] `maggot_harvests` = 0 → klaim biomassa/pupuk dihapus atau data disediakan
@@ -177,11 +188,12 @@ Anda perlu memilih satu jalur sebelum melanjutkan.
 - [ ] Judul sesuai cakupan data
 - [ ] Gambar 1 disisipkan
 
-**Sangat disarankan:**
+**Nilai tambah bila waktu memungkinkan:**
 - [ ] Eksperimen maggot 3 wadah termasuk kontrol (B1)
 - [ ] Kalibrasi load cell terekam (B3)
 - [ ] Latensi Roboflow terukur (B4)
 - [ ] Akurasi per kelas + baseline mayoritas-kelas (B2)
+- [ ] Estimasi biaya per unit, sebagai dukungan klaim arsitektur berbiaya rendah
 
 **Sebelum data lapangan dikumpulkan:**
 - [ ] Jalankan 4 migrasi basis data (`docs/PANDUAN_EKSEKUSI_OPERATOR.md`)

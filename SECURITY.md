@@ -32,7 +32,7 @@ repositori ini. Nilai-nilai tersebut harus dianggap **BOCOR** dan **wajib dirota
 | Kredensial | Di mana pernah muncul | Status |
 |---|---|---|
 | Kata sandi WiFi lokasi | Sketch firmware (`WIFI_PASS`) | sudah dipindah ke `secrets.h`; **nilai belum dirotasi** |
-| Kata sandi MQTT | Sketch firmware, `WIRING_PINOUT.md`, `ENV_VARIABLES.txt` | sudah dipindah ke `secrets.h`; **nilai belum dirotasi** |
+| Kata sandi MQTT | Sketch firmware, `WIRING_PINOUT.md`, catatan env manual (sudah dihapus dari folder) | sudah dipindah ke `secrets.h`; **nilai belum dirotasi** |
 | `DEVICE_API_KEY` | `backend/.env.example`, dokumentasi | placeholder sudah diganti; **nilai produksi belum dirotasi** |
 | Kata sandi akun produksi | `supabase/seed_prod_users.sql` (hash **dan** kata sandinya sebagai komentar), `docs/DEPLOY_*.md` | berkas sudah dibersihkan dan tidak lagi memuat hash siap pakai; **hash lama masih ada di riwayat git (commit `6b82e39`) sehingga kata sandi WAJIB diganti** |
 | `JWT_SECRET` | Berkembang: pernah bernilai lemah | **perlu dipastikan acak ≥ 32 byte** |
@@ -49,8 +49,10 @@ rotasi.
 ### Kredensial
 
 - Kredensial **tidak pernah** ditulis ke berkas yang di-commit. Berkas yang
-  ter-gitignore: `.env`, `deploy/.env`, `ENV_VARIABLES.txt`, `secrets.h`,
-  `deploy/mosquitto/passwd`.
+  ter-gitignore: `.env`, `deploy/.env`, `secrets.h`, `deploy/mosquitto/passwd`.
+  Catatan: berkas `ENV_VARIABLES.txt` (catatan env manual berisi kredensial terbuka)
+  sudah dihapus dari folder proyek karena isinya duplikat dan nilai efektifnya
+  tersimpan di `.env`, `deploy/.env`, dan `secrets.h`.
 - Firmware membaca kredensial dari `secrets.h` di folder sketch (lihat
   `firmware/secrets.h.example`). CI **menolak** commit yang memuat nilai kredensial
   yang pernah bocor.

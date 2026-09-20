@@ -268,7 +268,7 @@ ESP8266 tiap 30 detik
 |---|---|---|---|---|---|---|
 | Infra | High | Tidak ada CI/CD sebelum audit ini; tidak ada `.github/` | Regresi hanya terdeteksi setelah deploy | CI sudah dibuat; tambahkan deploy staging | M | P1 |
 | Infra | High | Tidak ada lingkungan staging; pengujian langsung ke produksi | Perubahan berisiko menyentuh data nyata | Tambahkan project Supabase + service staging | M | P1 |
-| Infra | High | Kredensial produksi ada sebagai file di disk (`.env`, `deploy/.env`, `ENV_VARIABLES.txt`) | Risiko kebocoran bila mesin dikompromikan | Pindahkan ke secret manager; putar ulang | M | P1 |
+| Infra | High | Kredensial produksi ada sebagai file di disk (`.env`, `deploy/.env`, `secrets.h`) | Risiko kebocoran bila mesin dikompromikan | **Sebagian selesai**: berkas catatan env manual yang memuat kredensial terbuka sudah dihapus. **Sisa**: pindahkan ke secret manager dan putar ulang nilainya | M | P1 |
 | Infra | Medium | `maintenanceMode` & `demoMode` adalah state in-memory (`config/maintenanceMode.js`, `config/demoMode.js`) | Hilang saat redeploy; **rusak bila replika > 1** → tidak dapat di-scale | Simpan di tabel `system_state` | M | P1 |
 | Infra | Medium | `docker-compose.prod.yml` tidak menetapkan user non-root | Container berjalan sebagai root | Tambahkan `user` + turunkan hak | S | P2 |
 | Infra | Medium | `.dockerignore` root tidak mengecualikan `backend/node_modules`/`frontend` | Konteks build besar & lambat | Perluas `.dockerignore` | S | P3 |
@@ -533,7 +533,7 @@ cd backend && npm test
 6. Angka **92%**, **<1%**, **<2 detik**, dan **WRI 81,78-82,29%** belum memiliki bukti tersimpan; diperlakukan sebagai klaim yang harus diukur atau diatribusikan.
 7. Foto contoh di repo **bukan** sampel representatif ompreng siswa.
 8. Pengukuran latency dilakukan dari jaringan penguji, **bukan** dari jaringan sekolah.
-9. Kredensial `.env`/`deploy/.env`/`ENV_VARIABLES.txt` **tidak terlacak git** (diverifikasi `git ls-files`), tetapi tetap diperlakukan **bocor** karena nilainya pernah dicetak di dokumen.
+9. Kredensial `.env`/`deploy/.env` **tidak terlacak git** (diverifikasi `git ls-files`), tetapi tetap diperlakukan **bocor** karena nilainya pernah dicetak di dokumen.
 
 ---
 

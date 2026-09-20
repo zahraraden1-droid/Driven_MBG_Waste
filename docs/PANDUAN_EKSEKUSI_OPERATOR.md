@@ -199,7 +199,7 @@ sehingga harus dianggap **bocor**. Membersihkan dokumen **tidak** menghapus kebo
 | Kredensial | Di mana pernah muncul | Tindakan |
 |---|---|---|
 | Kata sandi WiFi lokasi | Sketch firmware lama | Ganti kata sandi WiFi; perbarui `firmware/*/secrets.h`; **reflash** |
-| Kata sandi MQTT | Sketch firmware, `WIRING_PINOUT.md`, `ENV_VARIABLES.txt` | Ganti di broker + `deploy/.env` + Railway + `secrets.h`; **reflash** |
+| Kata sandi MQTT | Sketch firmware, `WIRING_PINOUT.md`, catatan env manual (sudah dihapus) | Ganti di broker + `deploy/.env` + Railway + `secrets.h`; **reflash** |
 | `DEVICE_API_KEY` | `backend/.env.example`, dokumentasi | Ganti di Railway + `secrets.h`; **reflash** |
 | Kata sandi akun produksi | `seed_prod_users.sql`, `docs/DEPLOY_*.md` | Ganti kata sandi 3 akun |
 | `JWT_SECRET` | Pernah bernilai lemah (`fazil`) | Pastikan acak ≥ 32 byte; menggantinya **mencabut semua token aktif** |
