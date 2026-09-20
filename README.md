@@ -33,6 +33,9 @@ Frontend Next.js (Vercel) ──REST──► Backend         Dashboard publik �
 >
 > Sistem ini dirancang untuk **satu sekolah**, bukan multi-tenant.
 
+> **Diagram lengkap** (koneksi, protokol, dan payload tiap hop) ada di
+> `docs/FLOWCHART_ARSITEKTUR_AIOT.md` beserta berkas SVG/PNG-nya.
+
 ## Struktur folder
 
 ```
@@ -184,6 +187,7 @@ Lihat `tools/README.md` untuk penjelasan lengkap.
 
 | Dokumen | Isi |
 |---|---|
+| `docs/FLOWCHART_ARSITEKTUR_AIOT.md` | **Flowchart arsitektur AIoT**: koneksi antar komponen, protokol & port, payload tiap hop (diagram SVG/PNG/Mermaid) |
 | `docs/AUDIT_PRODUCTION_READINESS.md` | Audit kesiapan produksi: temuan per layer, skor, roadmap 30/60/90 hari |
 | `docs/AUDIT_INTEGRITAS_DATA.md` | Audit data produksi: kualitas, provenance, cakupan |
 | `docs/paper/PAPER_MBGCircular_LENGKAP.md` | **Dokumen paper lengkap**: naskah (Bagian I), laporan audit (Bagian II), daftar perbaikan (Bagian III) |

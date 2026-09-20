@@ -1,0 +1,37 @@
+%% Arsitektur dan alur data AIoT — MBGCircular (SPPG MBG)
+%% Render: mermaid-cli  →  mmdc -i flowchart-arsitektur-aiot.mmd -o flowchart-arsitektur-aiot.png
+flowchart LR
+    subgraph EDGE["1 · Perangkat Lapangan (Edge)"]
+        CAM["ESP32-CAM<br/>Smart Container<br/><i>kamera, HX711+load cell, LCD, tombol</i>"]
+        CHM["ESP8266<br/>Maggot Chamber<br/><i>DHT22, DS18B20, MQ-135, HX711</i>"]
+    end
+
+    subgraph TRANS["2 · Transport"]
+        MQ["Broker MQTT — Mosquitto 2<br/>TCP 1883 / WS 9001<br/>auth user+password"]
+    end
+
+    subgraph APP["3 · Aplikasi"]
+        BE["Backend API — Express.js (Node 22)<br/>iotProcessor, REST, auth, audit"]
+    end
+
+    subgraph AIL["4 · Layanan AI"]
+        RF["Roboflow Cloud<br/>inferensi visual"]
+        FS["AI Service — FastAPI<br/>prediksi tren, korelasi menu"]
+    end
+
+    DB[("Supabase<br/>PostgreSQL + Storage")]
+    FE["Frontend — Next.js 14 (Vercel)"]
+
+    CAM -- "MQTT publish: foto JPEG + meta berat" --> MQ
+    CHM -- "MQTT publish: telemetri JSON 30 s" --> MQ
+    MQ -- "MQTT: result / cmd / maintenance" --> CAM
+    MQ -- "MQTT: result / cmd / maintenance" --> CHM
+    MQ -- "MQTT subscribe mbg/#" --> BE
+    BE -- "MQTT publish result + cmd" --> MQ
+    BE -- "HTTPS PostgREST: INSERT / SELECT" --> DB
+    BE -- "HTTPS: JPEG base64" --> RF
+    RF -- "predictions[]" --> BE
+    BE -- "HTTP JSON + X-Internal-Key" --> FS
+    FS -- "JSON hasil analisis" --> BE
+    FE -- "HTTPS REST + Bearer JWT" --> BE
+    BE -- "JSON respons" --> FE
