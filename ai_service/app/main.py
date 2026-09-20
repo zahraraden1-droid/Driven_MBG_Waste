@@ -1,10 +1,70 @@
+import hmac
+import os
 from datetime import date, datetime, timedelta
 from statistics import mean
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI, Header, HTTPException, status
 from pydantic import BaseModel
 
 app = FastAPI(title="SPPG MBG AI Service", version="1.0.0")
+
+# ============================================================================
+# Autentikasi layanan internal
+# ============================================================================
+# MASALAH YANG DIPERBAIKI
+# Sebelumnya layanan ini TIDAK memiliki autentikasi apa pun dan diekspos ke
+# internet. Siapa pun yang mengetahui alamatnya dapat memakai sumber daya
+# komputasi ini sesuka hati.
+#
+# PENDEKATAN
+# Shared secret sederhana lewat header `X-Internal-Key`. Ini bukan pengganti
+# autentikasi kuat, tetapi menutup akses publik tanpa menambah kerumitan berarti
+# untuk layanan yang hanya dipanggil backend.
+#
+# ROLLOUT YANG AMAN (penting, agar tidak memutus layanan yang sedang berjalan):
+#   - AI_INTERNAL_KEY kosong        -> autentikasi DIMATIKAN, hanya peringatan.
+#                                      Ini kondisi transisi: layanan tetap hidup
+#                                      supaya backend versi lama tidak langsung
+#                                      rusak saat AI service di-deploy lebih dulu.
+#   - ada nilainya                  -> header WAJIB ada dan cocok.
+#   - AI_REQUIRE_AUTH=true          -> tolak start bila kunci belum diatur
+#                                      (dipakai setelah rollout selesai).
+# ============================================================================
+
+AI_INTERNAL_KEY = os.environ.get("AI_INTERNAL_KEY", "").strip()
+AI_REQUIRE_AUTH = os.environ.get("AI_REQUIRE_AUTH", "false").lower() == "true"
+_TERBUKA_DIPERINGATKAN = False
+
+
+def verifikasi_layanan_internal(x_internal_key: str | None = Header(default=None)):
+    """Memastikan pemanggil adalah layanan internal yang sah."""
+    global _TERBUKA_DIPERINGATKAN
+
+    if not AI_INTERNAL_KEY:
+        if AI_REQUIRE_AUTH:
+            # Konfigurasi tidak lengkap: gagalkan permintaan, jangan diam-diam terbuka.
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Layanan AI belum dikonfigurasi (AI_INTERNAL_KEY kosong).",
+            )
+        # Kondisi transisi: beri tahu sekali saja agar tidak membanjiri log.
+        if not _TERBUKA_DIPERINGATKAN:
+            print(
+                "[PERINGATAN KEAMANAN] AI_INTERNAL_KEY belum diatur — layanan ini "
+                "TERBUKA tanpa autentikasi. Set AI_INTERNAL_KEY di AI service dan "
+                "backend, lalu set AI_REQUIRE_AUTH=true."
+            )
+            _TERBUKA_DIPERINGATKAN = True
+        return True
+
+    # Bandingkan dengan waktu tetap agar tidak bocor lewat perbedaan waktu respons.
+    if not x_internal_key or not hmac.compare_digest(x_internal_key, AI_INTERNAL_KEY):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Kunci layanan internal tidak sah.",
+        )
+    return True
+
 
 HARI_PANEN_MAGGOT = 21
 HARI_SEKOLAH_PER_PEKAN = 5
@@ -81,7 +141,10 @@ def health():
 
 
 @app.post("/predict/waste")
-def predict_waste(req: PredictWasteRequest):
+def predict_waste(
+    req: PredictWasteRequest,
+    _: bool = Depends(verifikasi_layanan_internal),
+):
     weekly = [p.totalLimbahKg for p in req.riwayat if p.totalLimbahKg is not None]
     weekly_trend = [p.totalLimbahKg for p in req.riwayat if p.totalLimbahKg is not None]
 
@@ -139,7 +202,10 @@ def _prediksi_harvest(batches):
 
 
 @app.post("/analyze/menu-correlation")
-def menu_correlation(req: MenuCorrelationRequest):
+def menu_correlation(
+    req: MenuCorrelationRequest,
+    _: bool = Depends(verifikasi_layanan_internal),
+):
     if not req.menu and not req.waste:
         return _fallback_correlations()
 
