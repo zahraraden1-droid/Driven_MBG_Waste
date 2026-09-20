@@ -188,8 +188,8 @@ try {
 
   // Ambil foto contoh dari repo
   const kandidatFoto = [
-    path.join(REPO_ROOT, 'smart container.jpeg'),
-    path.join(REPO_ROOT, 'maggot conversion chamber.jpeg')
+    path.join(REPO_ROOT, 'docs', 'assets', 'smart-container.jpeg'),
+    path.join(REPO_ROOT, 'docs', 'assets', 'maggot-conversion-chamber.jpeg')
   ].filter((f) => fs.existsSync(f))
 
   if (!kandidatFoto.length) {
@@ -309,7 +309,7 @@ if (!E2E_ENABLED) {
   hasil.tahap['5_end_to_end'] = { label: 'DILEWATI', alasan: 'E2E tidak diaktifkan (default)' }
 } else {
   const t5 = { ok: [], gagal: 0, error: null }
-  const kandidatFoto = path.join(REPO_ROOT, 'smart container.jpeg')
+  const kandidatFoto = path.join(REPO_ROOT, 'docs', 'assets', 'smart-container.jpeg')
   if (!fs.existsSync(kandidatFoto)) {
     t5.error = 'foto contoh tidak ditemukan'
   } else {
@@ -368,7 +368,7 @@ try {
   const { detectFoodWaste } = await import(
     path.join(REPO_ROOT, 'backend', 'src', 'services', 'roboflowService.js')
   ).then(async (m) => m.default || m)
-  const foto = path.join(REPO_ROOT, 'smart container.jpeg')
+  const foto = path.join(REPO_ROOT, 'docs', 'assets', 'smart-container.jpeg')
   if (fs.existsSync(foto)) {
     const buffer = fs.readFileSync(foto)
     for (const c of CONCURRENCY) {

@@ -32,7 +32,7 @@ Angka Roboflow yang muncul pada run tersebut sah untuk dikutip, karena inferensi
 
 ### Tabel A. Distribusi latency per tahap rantai AIoT
 
-Satuan milidetik (ms). `n` = jumlah sampel berhasil. Foto uji: `smart container.jpeg` (222 KB).
+Satuan milidetik (ms). `n` = jumlah sampel berhasil. Foto uji: `docs/assets/smart-container.jpeg` (222 KB).
 
 | Tahap rantai | Label | n | min | **p50 (median)** | mean | p95 | max |
 |---|---|---:|---:|---:|---:|---:|---:|

@@ -42,7 +42,8 @@ ai_service/  FastAPI: prediksi volume limbah & korelasi menu
 firmware/    Sketch ESP32-CAM & ESP8266 + dokumentasi wiring
 supabase/    schema.sql, migrasi (migrations/), dan seed
 deploy/      Docker Compose, Caddy, konfigurasi Mosquitto (jalur VPS)
-docs/        Dokumentasi teknis dan laporan audit
+docs/        Dokumentasi teknis, laporan audit, dan draf paper
+docs/assets/ Foto dokumentasi perangkat
 tools/       Skrip audit, benchmark, dan validasi
 ```
 
