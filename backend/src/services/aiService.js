@@ -4,14 +4,31 @@ const supabase = require('../config/supabase')
 
 const AI_BASE_URL = process.env.AI_SERVICE_URL || 'http://localhost:8000'
 
+// Kunci layanan internal. AI service kini menolak permintaan tanpa header ini
+// bila AI_INTERNAL_KEY diatur di sisi AI service. Nilai yang sama harus diisi
+// di kedua layanan.
+const AI_INTERNAL_KEY = process.env.AI_INTERNAL_KEY || ''
+
 async function callLocalAi(path, payload) {
+  const headers = { 'Content-Type': 'application/json' }
+  if (AI_INTERNAL_KEY) {
+    headers['X-Internal-Key'] = AI_INTERNAL_KEY
+  }
+
   const response = await fetch(`${AI_BASE_URL}${path}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers,
     body: JSON.stringify(payload)
   })
 
   if (!response.ok) {
+    // 401 berarti AI service meminta kunci yang belum/tidak cocok. Pesannya
+    // dibedakan agar penyebabnya langsung jelas, bukan sekadar "status 401".
+    if (response.status === 401) {
+      throw new Error(
+        'AI service menolak permintaan (401). Pastikan AI_INTERNAL_KEY sama di backend dan AI service.'
+      )
+    }
     throw new Error(`AI service merespon dengan status ${response.status}`)
   }
 

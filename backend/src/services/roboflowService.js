@@ -37,25 +37,111 @@ function createSeededRandom(seed) {
   }
 }
 
-function hitungProportion(predictions, totalWeightKg) {
-  const jumlahLuas = predictions.reduce((sum, p) => sum + Number(p.width) * Number(p.height), 0)
+// ---------------------------------------------------------------------------
+// Pembobotan distribusi berat.
+//
+// v1 `luas_bbox_v1` (perilaku lama, tetap jadi default saat ini):
+//   s_i = w_i * h_i          <- HANYA luas; confidence diabaikan sepenuhnya
+//
+// v2 `densitas_v2` (baru, perlu kalibrasi sebelum diaktifkan):
+//   s_i = d_kelas(i) * (w_i * h_i)^gamma * c_i^beta
+//   c_i = max(0, conf_i - theta) / (1 - theta)
+//
+// Saat gamma=1, beta=0 (c^0=1), dan d=1, rumus v2 KEMBALI PERSIS ke v1.
+// Karena itu peralihan metode reversibel lewat env SKEMA_BERAT, tanpa deploy kode.
+// ---------------------------------------------------------------------------
+
+// Densitas relatif per kelas, ternormalisasi terhadap nasi = 1.00.
+// Sumber nilai: asumsi awal, BELUM TERVALIDASI. Salinan acuan ada di tabel
+// `food_density` (supabase/migrations/20260920_provenance.sql).
+const DENSITAS_RELATIF = {
+  nasi: 1.0,
+  rice: 1.0,
+  tempe: 0.95,
+  tahu: 0.9,
+  ayam_goreng: 0.7,
+  ayam: 0.7,
+  ikan: 0.75,
+  telur: 0.95,
+  cap_cai: 0.55,
+  sayur: 0.55,
+  kelengkeng: 0.65,
+  pisang: 0.65,
+  buah: 0.65
+}
+const DENSITAS_DEFAULT = 0.8
+
+const SKEMA_BERAT = process.env.SKEMA_BERAT || 'luas_bbox_v1'
+const CONFIDENCE_THRESHOLD = Number(process.env.CONFIDENCE_THRESHOLD ?? 0.4)
+const SIZE_EXPONENT = Number(process.env.SIZE_EXPONENT ?? 1.0)
+const CONFIDENCE_EXPONENT = Number(process.env.CONFIDENCE_EXPONENT ?? 0.0)
+
+function densitasUntuk(kelas) {
+  const key = String(kelas || '').toLowerCase().replace(/\s+/g, '_')
+  if (DENSITAS_RELATIF[key] !== undefined) return DENSITAS_RELATIF[key]
+  // Coba pencocokan sebagian, mis. 'ayam_goreng_paha' -> 'ayam_goreng'
+  for (const [k, v] of Object.entries(DENSITAS_RELATIF)) {
+    if (key.includes(k)) return v
+  }
+  return DENSITAS_DEFAULT
+}
+
+function hitungProportion(predictions, totalWeightKg, opsi = {}) {
+  const skema = opsi.skemaBerat || SKEMA_BERAT
+  const pakaiFilterConfidence = skema !== 'luas_bbox_v1'
+
+  // Deteksi di bawah ambang confidence tidak boleh ikut menentukan distribusi.
+  const dipakai = pakaiFilterConfidence
+    ? predictions.filter((p) => (Number(p.confidence) || 0) >= CONFIDENCE_THRESHOLD)
+    : predictions
+
+  const dihitung = dipakai.map((p) => {
+    const luasPiksel = Number(p.width) * Number(p.height)
+    const conf = Math.max(0, Math.min(1, Number(p.confidence) || 0))
+
+    let bobot
+    if (pakaiFilterConfidence) {
+      const c = Math.max(0, conf - CONFIDENCE_THRESHOLD) / (1 - CONFIDENCE_THRESHOLD)
+      bobot =
+        densitasUntuk(p.class) *
+        Math.pow(luasPiksel, SIZE_EXPONENT) *
+        Math.pow(c, CONFIDENCE_EXPONENT)
+    } else {
+      bobot = luasPiksel
+    }
+
+    return { prediksi: p, luasPiksel, bobot, confidence: conf }
+  })
+
+  const jumlahBobot = dihitung.reduce((sum, d) => sum + d.bobot, 0)
+
+  const deteksi = dihitung.map((d) => {
+    const proporsi = jumlahBobot > 0 ? d.bobot / jumlahBobot : 0
+    const kategori = mapClassToKategori(d.prediksi.class)
+    return {
+      kelas: d.prediksi.class,
+      kategori,
+      namaKategori: KATEGORI_LABEL[kategori] || kategori,
+      luasPiksel: d.luasPiksel,
+      proporsi: Number((proporsi * 100).toFixed(1)),
+      beratKg: Number((Number(totalWeightKg) * proporsi).toFixed(3)),
+      confidence: d.confidence
+    }
+  })
 
   return {
     totalBeratKg: Number(totalWeightKg) || 0,
-    deteksi: predictions.map((p) => {
-      const luasPiksel = Number(p.width) * Number(p.height)
-      const proporsi = jumlahLuas > 0 ? luasPiksel / jumlahLuas : 0
-      const kategori = mapClassToKategori(p.class)
-      return {
-        kelas: p.class,
-        kategori,
-        namaKategori: KATEGORI_LABEL[kategori] || kategori,
-        luasPiksel,
-        proporsi: Number((proporsi * 100).toFixed(1)),
-        beratKg: Number((Number(totalWeightKg) * proporsi).toFixed(3)),
-        confidence: p.confidence
-      }
-    })
+    skemaBerat: skema,
+    // Provenance: bukti mutu data, dipakai untuk memisahkan baris nyata vs simulasi.
+    confidenceRataRata: deteksi.length
+      ? Number(
+          (
+            deteksi.reduce((s, d) => s + (Number(d.confidence) || 0), 0) /
+            deteksi.length
+          ).toFixed(4)
+        )
+      : null,
+    deteksi
   }
 }
 
@@ -132,17 +218,35 @@ async function callRoboflowWorkflow(imageBuffer) {
   return extractPredictions(json)
 }
 
+function modelVersi() {
+  return ROBOFLOW_WORKFLOW_ID || ROBOFLOW_MODEL || null
+}
+
+function mockMode(totalWeightKg, catatan) {
+  return {
+    mode: 'mock',
+    modelVersi: null,
+    catatan,
+    ...hitungProportion(mockPredictions(totalWeightKg), totalWeightKg)
+  }
+}
+
 async function detectFoodWaste(imageBuffer, totalWeightKg) {
+  // Tanpa API key: kembalikan mode 'mock' secara EKSPLISIT.
+  // Pemanggil (iotProcessor) yang memutuskan apakah hasil mock boleh disimpan.
+  // Di produksi, backend menolak menyimpan hasil mock (lihat MOCK_ALLOW_PERSIST).
   if (!ROBOFLOW_API_KEY) {
-    return { mode: 'mock', ...hitungProportion(mockPredictions(totalWeightKg), totalWeightKg) }
+    return mockMode(totalWeightKg, 'ROBOFLOW_API_KEY tidak diatur')
   }
 
   try {
-    let predictions
-
     if (ROBOFLOW_WORKFLOW_ID) {
-      predictions = await callRoboflowWorkflow(imageBuffer)
-      return { mode: 'roboflow', ...hitungProportion(predictions, totalWeightKg) }
+      const predictions = await callRoboflowWorkflow(imageBuffer)
+      return {
+        mode: 'roboflow',
+        modelVersi: modelVersi(),
+        ...hitungProportion(predictions, totalWeightKg)
+      }
     }
 
     if (ROBOFLOW_MODEL) {
@@ -154,14 +258,29 @@ async function detectFoodWaste(imageBuffer, totalWeightKg) {
       if (!response.ok) throw new Error(`Roboflow merespon status ${response.status}`)
 
       const json = await response.json()
-      predictions = Array.isArray(json.predictions) ? json.predictions : []
-      return { mode: 'roboflow', ...hitungProportion(predictions, totalWeightKg) }
+      const predictions = Array.isArray(json.predictions) ? json.predictions : []
+      return {
+        mode: 'roboflow',
+        modelVersi: modelVersi(),
+        ...hitungProportion(predictions, totalWeightKg)
+      }
     }
 
-    return { mode: 'mock', ...hitungProportion(mockPredictions(totalWeightKg), totalWeightKg) }
+    return mockMode(totalWeightKg, 'ROBOFLOW_WORKFLOW_ID dan ROBOFLOW_MODEL keduanya kosong')
   } catch (err) {
-    return { mode: 'mock', catatan: err.message, ...hitungProportion(mockPredictions(totalWeightKg), totalWeightKg) }
+    // Kegagalan API juga mengembalikan mock. mode='mock' membuat pemanggil
+    // dapat MENOLAK menyimpannya, sehingga kegagalan tidak lagi diam-diam
+    // menjadi data produksi.
+    return mockMode(totalWeightKg, `kegagalan inferensi: ${err.message}`)
   }
 }
 
-module.exports = { detectFoodWaste, mapClassToKategori, KATEGORI_LABEL }
+module.exports = {
+  detectFoodWaste,
+  mapClassToKategori,
+  hitungProportion,
+  densitasUntuk,
+  KATEGORI_LABEL,
+  SKEMA_BERAT,
+  CONFIDENCE_THRESHOLD
+}

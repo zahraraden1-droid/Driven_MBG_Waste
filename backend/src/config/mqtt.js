@@ -2,6 +2,7 @@ const mqtt = require('mqtt')
 const { isMaintenanceActive } = require('./maintenanceMode')
 const { processSmartContainer, processChamber } = require('../services/iotProcessor')
 const registry = require('./deviceRegistry')
+const { buatTrace, tandai, selesaikan } = require('./latencyTrace')
 
 const PREFIX = process.env.MQTT_TOPIC_PREFIX || 'mbg'
 const BROKER_URL = process.env.MQTT_URL
@@ -95,10 +96,18 @@ function startMqtt() {
       }
 
       if (suffix === 'smart-container/foto') {
+        // Titik awal pengukuran rantai: dari foto diterima broker sampai hasil
+        // dipublikasikan kembali. Inilah latency yang dimaksud pada paper.
+        const trace = buatTrace('smart-container-via-mqtt')
         const beratKg = metaCache && Date.now() - metaCache.ts < 30000 ? metaCache.beratKg : 0
-        const hasil = await processSmartContainer(payload, beratKg)
+        const hasil = await processSmartContainer(payload, beratKg, trace)
         registry.touch('smart-container', { beratKg, statusProses: hasil.status })
         publish(topic('smart-container/result'), JSON.stringify(hasil))
+        tandai(trace, 'hasilDipublikasikan')
+        selesaikan(trace, {
+          sukses: hasil.status === 'sukses',
+          keterangan: `mode=${hasil.mode} tersimpan=${hasil.tersimpan}`
+        })
         return
       }
 
@@ -106,14 +115,21 @@ function startMqtt() {
         const data = safeParse(payload)
         if (!data) return
 
+        const trace = buatTrace('maggot-chamber-via-mqtt')
+
         const calibration = {}
         if (typeof data.scaleFaktor === 'number') calibration.scaleFaktor = data.scaleFaktor
         if (typeof data.mq135R0 === 'number') calibration.mq135R0 = data.mq135R0
         if (Object.keys(calibration).length) registry.updateCalibration('maggot-chamber', calibration)
 
         registry.touch('maggot-chamber', data)
-        const hasil = await processChamber(data)
+        const hasil = await processChamber(data, trace)
         publish(topic('maggot-chamber/result'), JSON.stringify(hasil))
+        tandai(trace, 'hasilDipublikasikan')
+        // processChamber sudah menutup trace bila gagal; hindari pencatatan ganda.
+        if (hasil.tersimpan) {
+          selesaikan(trace, { sukses: true, keterangan: 'telemetri tersimpan' })
+        }
         return
       }
 

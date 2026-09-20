@@ -1,4 +1,20 @@
+/**
+ * Mengubah nilai sensor menjadi angka, atau null bila tidak tersedia.
+ *
+ * PERBAIKAN PENTING: sebelumnya fungsi ini memakai `Number(nilai)` tanpa
+ * memeriksa null. Karena `Number(null) === 0` dan `Number('') === 0`, sensor
+ * yang TIDAK TERBACA diperlakukan sebagai pembacaan 0 °C / 0 %.
+ * Akibatnya sistem memberi rekomendasi yang membingungkan, misalnya
+ * "Suhu bilik terlalu dingin (kurang dari 24°C)" padahal tidak ada data sama
+ * sekali — dan "Kelembaban ... saat ini 0%" untuk sensor yang mati.
+ *
+ * Sekarang nilai kosong dikembalikan sebagai null dan tidak ikut dinilai.
+ */
 function angka(ambil, nilai) {
+  if (nilai === null || nilai === undefined) return null
+  // String kosong / berisi spasi juga dianggap tidak ada nilai.
+  if (typeof nilai === 'string' && nilai.trim() === '') return null
+
   const n = Number(nilai)
   return Number.isFinite(n) && ambil(n) ? n : null
 }
