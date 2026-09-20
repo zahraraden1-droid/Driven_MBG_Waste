@@ -5,12 +5,14 @@ const requireRole = require('../middleware/roleCheck')
 const { isDemoActive } = require('../config/demoMode')
 const demoData = require('../data/demoData')
 const aiService = require('../services/aiService')
+const { limiterBerat } = require('../config/rateLimit')
 
 const router = express.Router()
 
 router.use(requireAuth, requireRole('dapur_mbg', 'superadmin'))
 
-router.get('/korelasi-menu', async (req, res) => {
+// Memanggil AI service eksternal + mengambil ribuan baris: dibatasi.
+router.get('/korelasi-menu', limiterBerat, async (req, res) => {
   const hasil = await aiService.getMenuCorrelation()
   res.json(hasil)
 })
