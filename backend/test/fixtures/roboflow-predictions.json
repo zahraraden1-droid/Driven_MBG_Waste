@@ -1,0 +1,57 @@
+{
+  "_keterangan": "Fixture keluaran Roboflow ASLI yang diberikan tim (bukan data karangan). Dipakai untuk membandingkan metode pembagian berat secara kuantitatif. Struktur ini adalah bentuk respons Inference API Roboflow: { predictions: [...] }.",
+  "_sumber": "Contoh keluaran model Roboflow tim MBGCircular, disalin apa adanya dari laporan tim.",
+  "_catatan": "class_id dan detection_id disimpan untuk kelengkapan bentuk respons, tetapi tidak dipakai dalam perhitungan.",
+  "predictions": [
+    {
+      "x": 355,
+      "y": 456.5,
+      "width": 282,
+      "height": 287,
+      "confidence": 0.971,
+      "class": "Ayam_Goreng",
+      "class_id": 2,
+      "detection_id": "ad4a4260-6656-4bb6-bce4-12da975fc85f"
+    },
+    {
+      "x": 96.5,
+      "y": 204.5,
+      "width": 153,
+      "height": 229,
+      "confidence": 0.966,
+      "class": "tempe",
+      "class_id": 30,
+      "detection_id": "3c8d703a-7957-4c89-a714-385d0a9308a2"
+    },
+    {
+      "x": 554,
+      "y": 398.5,
+      "width": 170,
+      "height": 271,
+      "confidence": 0.96,
+      "class": "Kelengkeng",
+      "class_id": 7,
+      "detection_id": "53c56dd2-0539-479f-b570-cd0fa60d7902"
+    },
+    {
+      "x": 392,
+      "y": 140,
+      "width": 270,
+      "height": 280,
+      "confidence": 0.957,
+      "class": "nasi",
+      "class_id": 26,
+      "detection_id": "b47884fd-c03e-4e1e-ada1-9c0f15f24871"
+    },
+    {
+      "x": 122.5,
+      "y": 504.5,
+      "width": 221,
+      "height": 271,
+      "confidence": 0.952,
+      "class": "cap_cai",
+      "class_id": 24,
+      "detection_id": "45faa386-a736-4b26-bf74-54fe04d649b6"
+    }
+  ]
+}

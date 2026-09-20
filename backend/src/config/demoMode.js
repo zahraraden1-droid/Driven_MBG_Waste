@@ -1,12 +1,16 @@
-let demoActive = process.env.DEMO_MODE === 'true'
+/*
+ * Mode demo.
+ *
+ * Sejak state dipindahkan ke database (lihat stateStore.js), modul ini menjadi
+ * delegasi tipis demi kompatibilitas pemanggil lama.
+ *
+ * CATATAN PERUBAHAN PERILAKU:
+ *   setDemoActive() dahulu SINKRON, kini ASYNC karena harus menulis ke database.
+ *   Pemanggil wajib memakai `await`. isDemoActive() tetap sinkron.
+ *
+ * Untuk kode baru, impor langsung dari './stateStore'.
+ */
 
-function isDemoActive() {
-  return demoActive
-}
+const { isDemoActive, setDemoActive, muatState } = require('./stateStore')
 
-function setDemoActive(value) {
-  demoActive = Boolean(value)
-  return demoActive
-}
-
-module.exports = { isDemoActive, setDemoActive }
+module.exports = { isDemoActive, setDemoActive, muatState }
