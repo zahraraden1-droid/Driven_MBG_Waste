@@ -1,3 +1,4 @@
+const crypto = require('node:crypto')
 const express = require('express')
 const multer = require('multer')
 const supabase = require('../config/supabase')
@@ -7,6 +8,8 @@ const { isDemoActive } = require('../config/demoMode')
 const demoData = require('../data/demoData')
 const aiService = require('../services/aiService')
 const evaluateChamberConditions = require('../services/sensorEvaluationService')
+const { validasi, skema } = require('../config/validasi')
+const { limiterBerat } = require('../config/rateLimit')
 
 const router = express.Router()
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } })
@@ -64,10 +67,22 @@ router.get('/menu', async (req, res) => {
 })
 
 router.post('/menu', upload.single('foto'), async (req, res) => {
-  const { tanggal, nama, kalori, protein } = req.body
+  const cek = validasi(skema.menuBaru, req.body)
+  if (!cek.sukses) {
+    return res.status(400).json({ error: cek.pesan })
+  }
+  const { tanggal, nama, kalori, protein } = cek.data
 
-  if (!tanggal || !nama) {
-    return res.status(400).json({ error: 'Tanggal dan nama menu wajib diisi' })
+  // Validasi jenis berkas. Sebelumnya MIME dari klien dipercaya begitu saja dan
+  // nama berkas dipakai mentah, sehingga berkas sembarang dapat masuk ke bucket
+  // publik dengan nama yang tidak terkendali.
+  if (req.file) {
+    const mimeDiizinkan = ['image/jpeg', 'image/png', 'image/webp']
+    if (!mimeDiizinkan.includes(req.file.mimetype)) {
+      return res.status(415).json({
+        error: `Jenis berkas tidak didukung (${req.file.mimetype}). Gunakan JPEG, PNG, atau WebP.`
+      })
+    }
   }
 
   if (isDemoActive() || !supabase) {
@@ -75,8 +90,8 @@ router.post('/menu', upload.single('foto'), async (req, res) => {
       id: `demo-menu-${Date.now()}`,
       tanggal,
       nama,
-      kalori: Number(kalori) || 0,
-      protein: Number(protein) || 0,
+      kalori: kalori ?? 0,
+      protein: protein ?? 0,
       fotoUrl: req.file ? 'demo-mode-foto-tidak-disimpan' : null
     })
   }
@@ -84,7 +99,14 @@ router.post('/menu', upload.single('foto'), async (req, res) => {
   let fotoUrl = null
 
   if (req.file) {
-    const fileName = `${Date.now()}-${req.file.originalname}`
+    // Nama berkas dibuat sendiri dari nilai aman: waktu + ekstensi yang
+    // diturunkan dari MIME yang sudah tervalidasi. Nama asli dari klien TIDAK
+    // dipakai, sehingga tidak ada risiko path traversal maupun karakter aneh.
+    const ekstensi =
+      { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' }[req.file.mimetype] ||
+      'bin'
+    const fileName = `menu-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.${ekstensi}`
+
     const { error: uploadError } = await supabase.storage
       .from('menu-foto')
       .upload(fileName, req.file.buffer, { contentType: req.file.mimetype })
@@ -100,8 +122,8 @@ router.post('/menu', upload.single('foto'), async (req, res) => {
     .insert({
       tanggal,
       nama,
-      kalori: Number(kalori) || 0,
-      protein: Number(protein) || 0,
+      kalori: kalori ?? 0,
+      protein: protein ?? 0,
       foto_url: fotoUrl
     })
     .select()
@@ -111,7 +133,8 @@ router.post('/menu', upload.single('foto'), async (req, res) => {
   res.json(data)
 })
 
-router.get('/prediksi', async (req, res) => {
+// Memanggil AI service eksternal: dibatasi.
+router.get('/prediksi', limiterBerat, async (req, res) => {
   const hasil = await aiService.getWastePrediction()
   res.json(hasil)
 })
@@ -131,16 +154,19 @@ router.get('/penjualan', async (req, res) => {
 })
 
 router.post('/penjualan', async (req, res) => {
-  const { tanggal, jenis, beratKg, hargaPerKg } = req.body
-
-  if (!tanggal || !jenis || !beratKg || !hargaPerKg) {
-    return res.status(400).json({ error: 'Semua kolom penjualan wajib diisi' })
+  // Validasi skema menggantikan pemeriksaan "truthy". Sebelumnya beratKg "-5"
+  // lolos dan menghasilkan total NEGATIF yang tersimpan sebagai penjualan.
+  const cek = validasi(skema.penjualanBaru, req.body)
+  if (!cek.sukses) {
+    return res.status(400).json({ error: cek.pesan })
   }
+  const { tanggal, jenis, beratKg, hargaPerKg } = cek.data
 
-  const total = Number(beratKg) * Number(hargaPerKg)
+  // total dihitung dari nilai yang sudah tervalidasi, bukan dari input mentah.
+  const total = Number((beratKg * hargaPerKg).toFixed(2))
 
   if (isDemoActive() || !supabase) {
-    return res.json({ id: `demo-jual-${Date.now()}`, tanggal, jenis, beratKg: Number(beratKg), hargaPerKg: Number(hargaPerKg), total })
+    return res.json({ id: `demo-jual-${Date.now()}`, tanggal, jenis, beratKg, hargaPerKg, total })
   }
 
   const { data, error } = await supabase

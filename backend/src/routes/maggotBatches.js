@@ -4,6 +4,8 @@ const requireAuth = require('../middleware/auth')
 const requireRole = require('../middleware/roleCheck')
 const { isDemoActive } = require('../config/demoMode')
 const demoData = require('../data/demoData')
+const { validasi, skema } = require('../config/validasi')
+const { catatAudit } = require('../config/auditTrail')
 
 const router = express.Router()
 
@@ -42,19 +44,22 @@ router.get('/', async (req, res) => {
 })
 
 router.post('/', async (req, res) => {
-  const { batchKode, tanggalMulai, beratTelurGram, biayaBeli, catatan } = req.body
-
-  if (!batchKode || !tanggalMulai || !beratTelurGram) {
-    return res.status(400).json({ error: 'Kode batch, tanggal mulai, dan berat telur wajib diisi' })
+  // Validasi skema menggantikan pemeriksaan "truthy" yang dahulu meloloskan
+  // nilai tidak sah seperti berat telur "-5" (negatif) atau tanggal "2026-13-45".
+  const cek = validasi(skema.batchBaru, req.body)
+  if (!cek.sukses) {
+    return res.status(400).json({ error: cek.pesan })
   }
+
+  const { batchKode, tanggalMulai, beratTelurGram, biayaBeli, catatan } = cek.data
 
   const payload = {
     batch_kode: batchKode,
     tanggal_mulai: tanggalMulai,
-    berat_telur_gram: Number(beratTelurGram),
-    biaya_beli: Number(biayaBeli) || 0,
+    berat_telur_gram: beratTelurGram,
+    biaya_beli: biayaBeli,
     status: 'inkubasi',
-    catatan: catatan || null
+    catatan
   }
 
   if (isDemoActive() || !supabase) {
@@ -141,21 +146,45 @@ router.get('/status-siklus', async (req, res) => {
 })
 
 router.put('/:id/panen', async (req, res) => {
-  const { id } = req.params
+  // Validasi ID lebih awal: sebelumnya ID sembarang diteruskan ke database dan
+  // menghasilkan error yang membingungkan bagi pengguna.
+  const cekId = validasi(skema.idUuid, req.params.id)
+  if (!cekId.sukses) {
+    return res.status(400).json({ error: 'ID batch tidak sah.' })
+  }
+  const id = cekId.data
 
   if (isDemoActive() || !supabase) {
     return res.json({ id, status: 'selesai_panen' })
   }
 
+  // Kondisi status pada update mencegah dua permintaan bersamaan sama-sama
+  // "berhasil" (race) — sebelumnya keduanya akan lolos tanpa pemeriksaan.
   const { data, error } = await supabase
     .from('maggot_batches')
     .update({ status: 'selesai_panen' })
     .eq('id', id)
+    .neq('status', 'selesai_panen')
     .select()
-    .single()
 
   if (error) return res.status(500).json({ error: error.message })
-  res.json(data)
+
+  if (!data || data.length === 0) {
+    // Bisa berarti ID tidak ada, ATAU batch sudah ditandai panen sebelumnya.
+    return res.status(409).json({
+      error: 'Batch tidak ditemukan atau sudah ditandai selesai panen sebelumnya.'
+    })
+  }
+
+  await catatAudit({
+    req,
+    aksi: 'batch.panen',
+    target: id,
+    detail: { batchKode: data[0].batch_kode, statusBaru: data[0].status },
+    pesan: 'Batch ditandai selesai panen'
+  })
+
+  res.json(data[0])
 })
 
 module.exports = router

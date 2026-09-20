@@ -5,6 +5,8 @@ const { isDemoActive } = require('../config/demoMode')
 const registry = require('../config/deviceRegistry')
 const { publishCommand } = require('../config/mqtt')
 const demoData = require('../data/demoData')
+const { limiterPerangkat } = require('../config/rateLimit')
+const { catatAudit } = require('../config/auditTrail')
 
 const router = express.Router()
 
@@ -22,7 +24,8 @@ router.get('/', (req, res) => {
   res.json(registry.getDevices())
 })
 
-router.post('/:id/cmd', (req, res) => {
+// Perintah fisik (termasuk reboot & tulis kalibrasi): dibatasi ketat.
+router.post('/:id/cmd', limiterPerangkat, async (req, res) => {
   const { id } = req.params
   const { cmd, value } = req.body || {}
 
@@ -48,6 +51,18 @@ router.post('/:id/cmd', (req, res) => {
   }
 
   const terkirim = publishCommand(id, payload)
+
+  // Jejak audit: perintah perangkat dapat mengubah perilaku fisik
+  // (reboot, tare, set_scale_factor), sehingga WAJIB tercatat siapa dan kapan.
+  await catatAudit({
+    req,
+    aksi: 'perangkat.perintah',
+    target: id,
+    detail: { cmd, value: payload.value ?? null },
+    berhasil: terkirim,
+    pesan: terkirim ? null : 'MQTT tidak aktif atau perangkat belum terhubung'
+  })
+
   if (!terkirim) {
     return res.json({ terkirim: false, pesan: 'MQTT tidak aktif atau perangkat belum terhubung' })
   }
